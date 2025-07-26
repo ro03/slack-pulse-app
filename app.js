@@ -1,7 +1,3 @@
-console.log('Loaded Signing Secret:', process.env.SLACK_SIGNING_SECRET);
-console.log('Loaded Bot Token:', process.env.SLACK_BOT_TOKEN);
-
-
 const { App } = require('@slack/bolt');
 const express = require('express');
 const dotenv = require('dotenv');
