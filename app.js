@@ -1,3 +1,7 @@
+if (process.env.NODE_ENV !== 'production') {
+  require('dotenv').config();
+}
+
 const { App } = require('@slack/bolt');
 const express = require('express');
 const dotenv = require('dotenv');
