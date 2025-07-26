@@ -1,4 +1,3 @@
-require('dotenv').config();
 console.log('Loaded Signing Secret:', process.env.SLACK_SIGNING_SECRET);
 console.log('Loaded Bot Token:', process.env.SLACK_BOT_TOKEN);
 
