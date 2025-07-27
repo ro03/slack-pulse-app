@@ -1,4 +1,3 @@
-const { App, ExpressReceiver } = require('@slack/bolt');
 
 // 1. Create a receiver
 const receiver = new ExpressReceiver({
