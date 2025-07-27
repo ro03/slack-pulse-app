@@ -30,7 +30,7 @@ app.command('/ask', async ({ ack, body, client }) => {
   await ack();
   try {
     await client.views.open({
-      trigger_id: body.trigger_id,
+          trigger_id: body.trigger_id,
       view: {
         type: 'modal',
         callback_id: 'poll_submission',
@@ -43,18 +43,53 @@ app.command('/ask', async ({ ack, body, client }) => {
           text: 'Send Poll'
         },
         blocks: [
+          // Block for the Poll Question
           {
             type: 'input',
             block_id: 'question_block',
             label: { type: 'plain_text', text: 'Poll Question' },
             element: { type: 'plain_text_input', action_id: 'question_input' }
           },
+          // Block for the Answer Options
           {
             type: 'input',
             block_id: 'options_block',
             label: { type: 'plain_text', text: 'Answer Options (one per line)' },
             element: { type: 'plain_text_input', multiline: true, action_id: 'options_input' }
           },
+          // ✨ NEW: Block to choose the poll format
+          {
+            type: 'input',
+            block_id: 'format_block',
+            label: { type: 'plain_text', text: 'Poll Format' },
+            element: {
+              type: 'static_select',
+              action_id: 'format_select',
+              placeholder: {
+                type: 'plain_text',
+                text: 'Choose a format'
+              },
+              initial_option: { // Default to buttons
+                text: { type: 'plain_text', text: 'Buttons' },
+                value: 'buttons'
+              },
+              options: [
+                {
+                  text: { type: 'plain_text', text: 'Buttons' },
+                  value: 'buttons'
+                },
+                {
+                  text: { type: 'plain_text', text: 'Dropdown Menu' },
+                  value: 'dropdown'
+                },
+                {
+                    text: { type: 'plain_text', text: 'Checkboxes (Multiple Answers)' },
+                    value: 'checkboxes'
+                }
+              ]
+            }
+          },
+          // Block for selecting users
           {
             type: 'input',
             block_id: 'users_block',
