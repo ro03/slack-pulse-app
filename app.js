@@ -23,8 +23,88 @@ const app = new App({
   receiver: receiver,
 });
 
+// ✨ NEW: Helper function to generate modal blocks dynamically
+const generateModalBlocks = (questionCount = 1) => {
+  const blocks = [];
 
-// This command opens the poll creation form (modal)
+  // Loop to create a set of blocks for each question
+  for (let i = 1; i <= questionCount; i++) {
+    blocks.push(
+      {
+        type: 'divider'
+      },
+      {
+        type: 'header',
+        text: {
+          type: 'plain_text',
+          text: `Question ${i}`
+        }
+      },
+      {
+        type: 'input',
+        block_id: `question_block_${i}`, // Unique block_id for each question
+        label: { type: 'plain_text', text: 'Poll Question' },
+        element: { type: 'plain_text_input', action_id: `question_input_${i}` }
+      },
+      {
+        type: 'input',
+        block_id: `options_block_${i}`, // Unique block_id for each options set
+        label: { type: 'plain_text', text: 'Answer Options (one per line)' },
+        element: { type: 'plain_text_input', multiline: true, action_id: `options_input_${i}` }
+      },
+      {
+        type: 'input',
+        block_id: `format_block_${i}`, // Unique block_id for each format selector
+        label: { type: 'plain_text', text: 'Poll Format' },
+        element: {
+          type: 'static_select',
+          action_id: `format_select_${i}`,
+          initial_option: { text: { type: 'plain_text', text: 'Buttons' }, value: 'buttons' },
+          options: [
+            { text: { type: 'plain_text', text: 'Buttons' }, value: 'buttons' },
+            { text: { type: 'plain_text', text: 'Dropdown Menu' }, value: 'dropdown' },
+            { text: { type: 'plain_text', text: 'Checkboxes (Multiple Answers)' }, value: 'checkboxes' }
+          ]
+        }
+      }
+    );
+  }
+
+  // Add the "Add Question" button
+  blocks.push(
+    {
+      type: 'divider'
+    },
+    {
+      type: 'actions',
+      elements: [
+        {
+          type: 'button',
+          text: { type: 'plain_text', text: '➕ Add Another Question' },
+          action_id: 'add_question_button',
+          // Pass the current question count in the value
+          value: `${questionCount}`
+        }
+      ]
+    }
+  );
+
+  // Add the user selector at the end
+  blocks.push({
+    type: 'input',
+    block_id: 'users_block',
+    label: { type: 'plain_text', text: 'Send survey to these users' },
+    element: {
+      type: 'multi_users_select',
+      placeholder: { type: 'plain_text', text: 'Select users' },
+      action_id: 'users_select'
+    }
+  });
+
+  return blocks;
+};
+
+// This command opens the initial survey creation modal
 app.command('/ask', async ({ ack, body, client }) => {
   await ack();
   try {
@@ -33,73 +113,9 @@ app.command('/ask', async ({ ack, body, client }) => {
       view: {
         type: 'modal',
         callback_id: 'poll_submission',
-        title: {
-          type: 'plain_text',
-          text: 'Create a New Poll'
-        },
-        submit: {
-          type: 'plain_text',
-          text: 'Send Poll'
-        },
-        blocks: [
-          // Block for the Poll Question
-          {
-            type: 'input',
-            block_id: 'question_block',
-            label: { type: 'plain_text', text: 'Poll Question' },
-            element: { type: 'plain_text_input', action_id: 'question_input' }
-          },
-          // Block for the Answer Options
-          {
-            type: 'input',
-            block_id: 'options_block',
-            label: { type: 'plain_text', text: 'Answer Options (one per line)' },
-            element: { type: 'plain_text_input', multiline: true, action_id: 'options_input' }
-          },
-          // ✨ NEW: Block to choose the poll format
-          {
-            type: 'input',
-            block_id: 'format_block',
-            label: { type: 'plain_text', text: 'Poll Format' },
-            element: {
-              type: 'static_select',
-              action_id: 'format_select',
-              placeholder: {
-                type: 'plain_text',
-                text: 'Choose a format'
-              },
-              initial_option: { // Default to buttons
-                text: { type: 'plain_text', text: 'Buttons' },
-                value: 'buttons'
-              },
-              options: [
-                {
-                  text: { type: 'plain_text', text: 'Buttons' },
-                  value: 'buttons'
-                },
-                {
-                  text: { type: 'plain_text', text: 'Dropdown Menu' },
-                  value: 'dropdown'
-                },
-                {
-                    text: { type: 'plain_text', text: 'Checkboxes (Multiple Answers)' },
-                    value: 'checkboxes'
-                }
-              ]
-            }
-          },
-          // Block for selecting users
-          {
-            type: 'input',
-            block_id: 'users_block',
-            label: { type: 'plain_text', text: 'Send to these users' },
-            element: {
-              type: 'multi_users_select',
-              placeholder: { type: 'plain_text', text: 'Select users' },
-              action_id: 'users_select'
-            }
-          }
-        ]
+        title: { type: 'plain_text', text: 'Create a New Survey' },
+        submit: { type: 'plain_text', text: 'Send Survey' },
+        blocks: generateModalBlocks(1) // Start with 1 question
       }
     });
   } catch (error) {
@@ -107,172 +123,140 @@ app.command('/ask', async ({ ack, body, client }) => {
   }
 });
 
+// ✨ NEW: This listener handles the "Add Another Question" button click
+app.action('add_question_button', async ({ ack, body, client, action }) => {
+  await ack();
+
+  // Get the current number of questions from the button's value
+  const currentQuestionCount = parseInt(action.value, 10);
+  const newQuestionCount = currentQuestionCount + 1;
+
+  try {
+    // Update the view with a new set of blocks
+    await client.views.update({
+      view_id: body.view.id,
+      hash: body.view.hash, // Required for view updates
+      view: {
+        type: 'modal',
+        callback_id: 'poll_submission',
+        title: { type: 'plain_text', text: 'Create a New Survey' },
+        submit: { type: 'plain_text', text: 'Send Survey' },
+        blocks: generateModalBlocks(newQuestionCount)
+      }
+    });
+  } catch (error) {
+    console.error("Failed to update view:", error);
+  }
+});
+
+
 // This listener handles the submission of the modal form
 app.view('poll_submission', async ({ ack, body, view, client }) => {
   await ack();
 
-  // Extract values from the submitted view
   const values = view.state.values;
-  const questionText = values.question_block.question_input.value;
-  const optionsText = values.options_block.options_input.value;
-  const pollFormat = values.format_block.format_select.selected_option.value;
   const userIds = values.users_block.users_select.selected_users;
 
-  const options = optionsText.split('\n').filter(opt => opt.trim() !== '');
+  // ✨ UPDATED: Parse multiple questions from the view state
+  const parsedQuestions = [];
+  const questionKeys = Object.keys(values).filter(key => key.startsWith('question_block_'));
+  
+  for (const qKey of questionKeys) {
+    const qIndex = qKey.split('_')[2];
+    const questionText = values[qKey][`question_input_${qIndex}`].value;
+    const optionsText = values[`options_block_${qIndex}`][`options_input_${qIndex}`].value;
+    const pollFormat = values[`format_block_${qIndex}`][`format_select_${qIndex}`].selected_option.value;
 
-  // Base message blocks
-  let pollBlocks = [{
-    type: 'section',
-    text: { type: 'mrkdwn', text: `*${questionText}*` }
-  }];
+    if (questionText && optionsText) {
+      parsedQuestions.push({
+        questionText,
+        options: optionsText.split('\n').filter(opt => opt.trim() !== ''),
+        pollFormat
+      });
+    }
+  }
 
-  // ✨ UPDATED: Logic to build blocks based on the selected format
-  let responseBlock;
-  const actionId = `poll_response_${Date.now()}`; // Unique ID for the action element
-
-  switch (pollFormat) {
-    case 'dropdown':
-      responseBlock = {
-        type: 'actions',
-        elements: [{
-          type: 'static_select',
-          placeholder: { type: 'plain_text', text: 'Choose an answer' },
-          action_id: actionId,
-          options: options.map(label => ({
-            text: { type: 'plain_text', text: label },
-            value: JSON.stringify({ label, question: questionText })
-          }))
-        }]
-      };
-      break;
+  // Loop through each parsed question and send it
+  for (const questionData of parsedQuestions) {
+    // Re-use the block building logic from the previous step for each question
+    let pollBlocks = [{
+        type: 'section',
+        text: { type: 'mrkdwn', text: `*${questionData.questionText}*` }
+    }];
     
-    case 'checkboxes':
-      responseBlock = {
-        type: 'actions',
-        elements: [{
-          type: 'checkboxes',
-          action_id: actionId,
-          options: options.map(label => ({
-            text: { type: 'mrkdwn', text: label },
-            value: JSON.stringify({ label, question: questionText })
-          }))
-        }]
-      };
-      break;
-
-    case 'buttons':
-    default:
-      responseBlock = {
-        type: 'actions',
-        elements: options.map(label => ({
-          type: 'button',
-          text: { type: 'plain_text', text: label },
-          value: JSON.stringify({ label, question: questionText }),
-          action_id: `${actionId}_${label.replace(/\s+/g, '_')}` // Action IDs for buttons must be unique per button
-        }))
-      };
-      break;
-  }
+    let responseBlock;
+    const actionId = `poll_response_${Date.now()}`;
   
-  pollBlocks.push(responseBlock);
-  
-  // A confirmation button for checkbox submissions
-  if (pollFormat === 'checkboxes') {
-      pollBlocks.push({
-          type: 'actions',
-          elements: [{
-              type: 'button',
-              text: { type: 'plain_text', text: 'Submit Answers'},
-              style: 'primary',
-              action_id: 'submit_checkbox_answers',
-              value: JSON.stringify({ question: questionText })
-          }]
-      });
-  }
+    switch (questionData.pollFormat) {
+      case 'dropdown':
+        responseBlock = { type: 'actions', elements: [{ type: 'static_select', placeholder: { type: 'plain_text', text: 'Choose an answer' }, action_id: actionId, options: questionData.options.map(label => ({ text: { type: 'plain_text', text: label }, value: JSON.stringify({ label, question: questionData.questionText }) })) }] };
+        break;
+      case 'checkboxes':
+        responseBlock = { type: 'actions', elements: [{ type: 'checkboxes', action_id: actionId, options: questionData.options.map(label => ({ text: { type: 'mrkdwn', text: label }, value: JSON.stringify({ label, question: questionData.questionText }) })) }] };
+        break;
+      case 'buttons':
+      default:
+        responseBlock = { type: 'actions', elements: questionData.options.map(label => ({ type: 'button', text: { type: 'plain_text', text: label }, value: JSON.stringify({ label, question: questionData.questionText }), action_id: `${actionId}_${label.replace(/\s+/g, '_')}` })) };
+        break;
+    }
+    pollBlocks.push(responseBlock);
 
-  // Send the poll to each selected user
-  for (const userId of userIds) {
-    try {
-      await client.chat.postMessage({
-        channel: userId,
-        text: `A new question for you: ${questionText}`,
-        blocks: pollBlocks
-      });
-    } catch (error) {
-      console.error(`Failed to send DM to ${userId}`, error);
+    if (questionData.pollFormat === 'checkboxes') {
+        pollBlocks.push({ type: 'actions', elements: [{ type: 'button', text: { type: 'plain_text', text: 'Submit Answers'}, style: 'primary', action_id: 'submit_checkbox_answers', value: JSON.stringify({ question: questionData.questionText }) }] });
+    }
+
+    // Send the poll to each selected user
+    for (const userId of userIds) {
+      try {
+        await client.chat.postMessage({
+          channel: userId,
+          text: `A new survey question for you: ${questionData.questionText}`,
+          blocks: pollBlocks
+        });
+      } catch (error) {
+        console.error(`Failed to send DM to ${userId}`, error);
+      }
     }
   }
 });
+
+
+// --- The Response Handlers below remain unchanged from the previous version ---
 
 // Generic handler to process and save a response
 async function processAndSaveResponse(user, question, answer, timestamp) {
   await saveResponseToSheet({ user, question, answer, timestamp });
 }
 
-// ✨ UPDATED: A single, robust listener for all poll responses
+// Listener for buttons and dropdowns
 app.action(/^poll_response_.+$/, async ({ ack, body, client, action }) => {
   await ack();
-  
-  // This listener handles buttons and dropdowns, which don't require a separate submit button.
   if (action.type === 'button' || action.type === 'static_select') {
     const payload = JSON.parse(action.type === 'button' ? action.value : action.selected_option.value);
     const userInfo = await client.users.info({ user: body.user.id });
     const userName = userInfo.user.profile.real_name || userInfo.user.name;
-
-    await client.chat.update({
-      channel: body.channel.id,
-      ts: body.message.ts,
-      blocks: [{
-        type: 'section',
-        text: {
-          type: 'mrkdwn',
-          text: `✅ Thank you, ${userName}! Your response "*${payload.label}*" has been recorded.`
-        }
-      }]
-    });
-    
+    await client.chat.update({ channel: body.channel.id, ts: body.message.ts, blocks: [{ type: 'section', text: { type: 'mrkdwn', text: `✅ Thank you, ${userName}! Your response "*${payload.label}*" has been recorded.` } }] });
     await processAndSaveResponse(userName, payload.question, payload.label, new Date().toISOString());
   }
 });
 
-// ✨ NEW: Listener for the 'Submit Answers' button for checkboxes
-app.action('submit_checkbox_answers', async ({ ack, body, client }) => {
+// Listener for the 'Submit Answers' button for checkboxes
+app.action('submit_checkbox_answers', async ({ ack, body, client, action }) => {
     await ack();
-
     const userInfo = await client.users.info({ user: body.user.id });
     const userName = userInfo.user.profile.real_name || userInfo.user.name;
-    
-    // Checkbox state is inside body.state, not the action payload
-    const actionBlockId = body.message.blocks.find(b => b.type === 'actions' && b.elements[0].type === 'checkboxes').elements[0].action_id;
-    const selectedOptions = body.state.values[body.message.blocks.find(b => b.type === 'actions' && b.elements[0].type === 'checkboxes').block_id][actionId].selected_options;
+    const actionBlock = body.message.blocks.find(b => b.type === 'actions' && b.elements[0].type === 'checkboxes');
+    if (!actionBlock) return;
+    const actionId = actionBlock.elements[0].action_id;
+    const selectedOptions = body.state.values[actionBlock.block_id][actionId].selected_options;
     const question = JSON.parse(body.actions[0].value).question;
-    
     if (selectedOptions.length === 0) {
-        // Optionally send an ephemeral message if nothing was selected
-        await client.chat.postEphemeral({
-            user: body.user.id,
-            channel: body.channel.id,
-            text: "Please select at least one option before submitting."
-        });
+        await client.chat.postEphemeral({ user: body.user.id, channel: body.channel.id, text: "Please select at least one option before submitting." });
         return;
     }
-
     const answers = selectedOptions.map(opt => JSON.parse(opt.value).label);
     const answerText = answers.map(a => `"${a}"`).join(', ');
-
-    await client.chat.update({
-        channel: body.channel.id,
-        ts: body.message.ts,
-        blocks: [{
-            type: 'section',
-            text: {
-                type: 'mrkdwn',
-                text: `✅ Thank you, ${userName}! Your responses *${answerText}* have been recorded.`
-            }
-        }]
-    });
-
-    // Save each selected answer as a separate row
+    await client.chat.update({ channel: body.channel.id, ts: body.message.ts, blocks: [{ type: 'section', text: { type: 'mrkdwn', text: `✅ Thank you, ${userName}! Your responses *${answerText}* have been recorded.` } }] });
     for (const answer of answers) {
         await processAndSaveResponse(userName, question, answer, new Date().toISOString());
     }
