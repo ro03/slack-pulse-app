@@ -151,7 +151,11 @@ app.action(/^answer_button_.+$/, async ({ ack, body, client, action }) => {
 });
 
 // Start your app
+// ✅ CORRECT CODE
+
 (async () => {
+  // This line correctly uses the Render port OR falls back to 3000 for local dev
   await app.start(process.env.PORT || 3000);
-  console.log('⚡️ Slack app is running!');
+
+  console.log('⚡️ Bolt app is running!');
 })();
