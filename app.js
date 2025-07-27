@@ -1,3 +1,21 @@
+const { App, ExpressReceiver } = require("@slack/bolt");
+
+// 1. Explicitly create an ExpressReceiver
+const receiver = new ExpressReceiver({
+  signingSecret: process.env.SLACK_SIGNING_SECRET,
+});
+
+// 2. Create the Bolt App, passing the custom receiver
+const app = new App({
+  token: process.env.SLACK_BOT_TOKEN,
+  receiver: receiver,
+});
+
+// 3. Add the health check route directly to the receiver
+receiver.app.get('/', (req, res) => {
+  res.status(200).send('App is running!');
+});
+
 // This check makes sure dotenv only runs on your local computer, not on Render
 if (process.env.NODE_ENV !== 'production') {
   require('dotenv').config();
