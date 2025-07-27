@@ -1,35 +1,29 @@
+// 1. All require statements should be at the top
+const { App, ExpressReceiver } = require('@slack/bolt');
+const { saveResponseToSheet } = require('./sheets');
 
-// 1. Create a receiver
-const receiver = new ExpressReceiver({
-  signingSecret: process.env.SLACK_SIGNING_SECRET,
-});
-
-// 2. Add your custom route to the receiver
-receiver.app.get('/', (req, res) => {
-  res.status(200).send('App is up and running!');
-});
-
-// 3. Initialize the app with the receiver
-const app = new App({
-  token: process.env.SLACK_BOT_TOKEN,
-  receiver: receiver, // Pass the custom receiver
-});
-
+// 2. Configure dotenv for local development
 // This check makes sure dotenv only runs on your local computer, not on Render
 if (process.env.NODE_ENV !== 'production') {
   require('dotenv').config();
 }
 
-const { App, ExpressReceiver } = require('@slack/bolt');
-const { saveResponseToSheet } = require('./sheets');
+// 3. Create a receiver for HTTP mode. The signing secret goes here.
+const receiver = new ExpressReceiver({
+  signingSecret: process.env.SLACK_SIGNING_SECRET,
+});
 
-// Initialize the app
+// Optional: Add a custom route for health checks
+receiver.app.get('/', (req, res) => {
+  res.status(200).send('App is up and running!');
+});
+
+// 4. Initialize the app ONCE with the token and the receiver
 const app = new App({
   token: process.env.SLACK_BOT_TOKEN,
-  signingSecret: process.env.SLACK_SIGNING_SECRET,
-  socketMode: true,
-  appToken: process.env.SLACK_APP_TOKEN
+  receiver: receiver,
 });
+
 
 // This command opens the poll creation form (modal)
 app.command('/ask', async ({ ack, body, client }) => {
@@ -101,7 +95,7 @@ app.view('poll_submission', async ({ ack, body, view, client }) => {
         type: 'button',
         text: { type: 'plain_text', text: label },
         value: JSON.stringify({ label, question: questionText }),
-        action_id: `answer_button_${label}`
+        action_id: `answer_button_${label.replace(/\s+/g, '_')}` // Make action_id more robust
       }))
     }
   ];
@@ -150,11 +144,8 @@ app.action(/^answer_button_.+$/, async ({ ack, body, client, action }) => {
 });
 
 // Start your app
-// ✅ CORRECT CODE
-
 (async () => {
   // This line correctly uses the Render port OR falls back to 3000 for local dev
   await app.start(process.env.PORT || 3000);
-
   console.log('⚡️ Bolt app is running!');
 })();
