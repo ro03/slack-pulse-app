@@ -132,11 +132,6 @@ app.action(/^answer_button_.+$/, async ({ ack, body, client, action }) => {
   });
 });
 
-// Respond to health checks from Render
-app.receiver.app.get('/', (req, res) => {
-  res.status(200).send('App is running!');
-});
-
 // Start your app
 (async () => {
   await app.start(process.env.PORT || 3000);
