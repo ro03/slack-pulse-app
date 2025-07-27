@@ -25,81 +25,59 @@ const app = new App({
 
 // ✨ NEW: Helper function to generate modal blocks dynamically
 const generateModalBlocks = (questionCount = 1) => {
-  const blocks = [];
+  let blocks = [];
+
+  // --- NEW: Section for optional introductory content ---
+  blocks.push(
+    {
+      type: 'header',
+      text: {
+        type: 'plain_text',
+        text: 'Survey Introduction (Optional)'
+      }
+    },
+    {
+      type: 'input',
+      block_id: 'intro_message_block',
+      optional: true,
+      label: { type: 'plain_text', text: 'Introductory Message' },
+      element: { type: 'plain_text_input', multiline: true, action_id: 'intro_message_input' }
+    },
+    {
+      type: 'input',
+      block_id: 'image_url_block',
+      optional: true,
+      label: { type: 'plain_text', text: 'Image or GIF URL' },
+      element: { type: 'plain_text_input', action_id: 'image_url_input', placeholder: { type: 'plain_text', text: 'https://example.com/image.gif' } }
+    },
+    {
+      type: 'input',
+      block_id: 'video_url_block',
+      optional: true,
+      label: { type: 'plain_text', text: 'YouTube or Vimeo Video URL' },
+      element: { type: 'plain_text_input', action_id: 'video_url_input', placeholder: { type: 'plain_text', text: 'https://www.youtube.com/watch?v=...' } }
+    }
+  );
 
   // Loop to create a set of blocks for each question
   for (let i = 1; i <= questionCount; i++) {
     blocks.push(
-      {
-        type: 'divider'
-      },
-      {
-        type: 'header',
-        text: {
-          type: 'plain_text',
-          text: `Question ${i}`
-        }
-      },
-      {
-        type: 'input',
-        block_id: `question_block_${i}`, // Unique block_id for each question
-        label: { type: 'plain_text', text: 'Poll Question' },
-        element: { type: 'plain_text_input', action_id: `question_input_${i}` }
-      },
-      {
-        type: 'input',
-        block_id: `options_block_${i}`, // Unique block_id for each options set
-        label: { type: 'plain_text', text: 'Answer Options (one per line)' },
-        element: { type: 'plain_text_input', multiline: true, action_id: `options_input_${i}` }
-      },
-      {
-        type: 'input',
-        block_id: `format_block_${i}`, // Unique block_id for each format selector
-        label: { type: 'plain_text', text: 'Poll Format' },
-        element: {
-          type: 'static_select',
-          action_id: `format_select_${i}`,
-          initial_option: { text: { type: 'plain_text', text: 'Buttons' }, value: 'buttons' },
-          options: [
-            { text: { type: 'plain_text', text: 'Buttons' }, value: 'buttons' },
-            { text: { type: 'plain_text', text: 'Dropdown Menu' }, value: 'dropdown' },
-            { text: { type: 'plain_text', text: 'Checkboxes (Multiple Answers)' }, value: 'checkboxes' }
-          ]
-        }
-      }
+      { type: 'divider' },
+      { type: 'header', text: { type: 'plain_text', text: `Question ${i}` } },
+      { type: 'input', block_id: `question_block_${i}`, label: { type: 'plain_text', text: 'Poll Question' }, element: { type: 'plain_text_input', action_id: `question_input_${i}` } },
+      { type: 'input', block_id: `options_block_${i}`, label: { type: 'plain_text', text: 'Answer Options (one per line)' }, element: { type: 'plain_text_input', multiline: true, action_id: `options_input_${i}` } },
+      { type: 'input', block_id: `format_block_${i}`, label: { type: 'plain_text', text: 'Poll Format' }, element: { type: 'static_select', action_id: `format_select_${i}`, initial_option: { text: { type: 'plain_text', text: 'Buttons' }, value: 'buttons' }, options: [ { text: { type: 'plain_text', text: 'Buttons' }, value: 'buttons' }, { text: { type: 'plain_text', text: 'Dropdown Menu' }, value: 'dropdown' }, { text: { type: 'plain_text', text: 'Checkboxes (Multiple Answers)' }, value: 'checkboxes' } ] } }
     );
   }
 
   // Add the "Add Question" button
   blocks.push(
-    {
-      type: 'divider'
-    },
-    {
-      type: 'actions',
-      elements: [
-        {
-          type: 'button',
-          text: { type: 'plain_text', text: '➕ Add Another Question' },
-          action_id: 'add_question_button',
-          // Pass the current question count in the value
-          value: `${questionCount}`
-        }
-      ]
-    }
+    { type: 'divider' },
+    { type: 'actions', elements: [ { type: 'button', text: { type: 'plain_text', text: '➕ Add Another Question' }, action_id: 'add_question_button', value: `${questionCount}` } ] }
   );
 
   // Add the user selector at the end
-  blocks.push({
-    type: 'input',
-    block_id: 'users_block',
-    label: { type: 'plain_text', text: 'Send survey to these users' },
-    element: {
-      type: 'multi_users_select',
-      placeholder: { type: 'plain_text', text: 'Select users' },
-      action_id: 'users_select'
-    }
-  });
+  blocks.push({ type: 'input', block_id: 'users_block', label: { type: 'plain_text', text: 'Send survey to these users' }, element: { type: 'multi_users_select', placeholder: { type: 'plain_text', text: 'Select users' }, action_id: 'users_select' } });
 
   return blocks;
 };
@@ -157,6 +135,40 @@ app.view('poll_submission', async ({ ack, body, view, client }) => {
   const values = view.state.values;
   const userIds = values.users_block.users_select.selected_users;
 
+  // --- NEW: This will hold ALL blocks for the single survey message ---
+  let allBlocks = [];
+
+  // --- NEW: Read and build the introductory blocks ---
+  const introMessage = values.intro_message_block?.intro_message_input?.value;
+  const imageUrl = values.image_url_block?.image_url_input?.value;
+  const videoUrl = values.video_url_block?.video_url_input?.value;
+
+  if (introMessage) {
+    allBlocks.push({
+      type: 'section',
+      text: { type: 'mrkdwn', text: introMessage }
+    });
+  }
+  if (imageUrl) {
+    allBlocks.push({
+      type: 'image',
+      image_url: imageUrl,
+      alt_text: 'Survey introduction image'
+    });
+  }
+  if (videoUrl) {
+    // For video, we post the link and let Slack "unfurl" it into an embedded player
+    allBlocks.push({
+      type: 'section',
+      text: { type: 'mrkdwn', text: `▶️ <${videoUrl}>` }
+    });
+  }
+
+  // Add a divider if we had any intro content
+  if (allBlocks.length > 0) {
+    allBlocks.push({ type: 'divider' });
+  }
+
   // Parse multiple questions from the view state
   const parsedQuestions = [];
   const questionKeys = Object.keys(values).filter(key => key.startsWith('question_block_'));
@@ -168,66 +180,57 @@ app.view('poll_submission', async ({ ack, body, view, client }) => {
     const pollFormat = values[`format_block_${qIndex}`][`format_select_${qIndex}`].selected_option.value;
 
     if (questionText && optionsText) {
-      parsedQuestions.push({
-        questionText,
-        options: optionsText.split('\n').filter(opt => opt.trim() !== ''),
-        pollFormat
-      });
+      parsedQuestions.push({ questionText, options: optionsText.split('\n').filter(opt => opt.trim() !== ''), pollFormat });
     }
   }
 
-  // Loop through each parsed question using .entries() to get an index
+  // --- UPDATED: Loop through questions and ADD their blocks to the 'allBlocks' array ---
   for (const [questionIndex, questionData] of parsedQuestions.entries()) {
     
-    let pollBlocks = [{
-        type: 'section',
-        text: { type: 'mrkdwn', text: `*${questionData.questionText}*` }
-    }];
+    // Use a header for each question to separate them visually
+    allBlocks.push({
+        type: 'header',
+        text: { type: 'plain_text', text: questionData.questionText }
+    });
     
     let responseBlock;
-    // ✨ FIX 1: Make the base actionId unique per question using the question's index
     const baseActionId = `poll_response_${Date.now()}_q${questionIndex}`;
   
     switch (questionData.pollFormat) {
       case 'dropdown':
-        // Dropdowns are a single element, so the base ID is fine
         responseBlock = { type: 'actions', elements: [{ type: 'static_select', placeholder: { type: 'plain_text', text: 'Choose an answer' }, action_id: baseActionId, options: questionData.options.map(label => ({ text: { type: 'plain_text', text: label }, value: JSON.stringify({ label, question: questionData.questionText }) })) }] };
         break;
       case 'checkboxes':
-        // Checkboxes are a single element, so the base ID is fine
         responseBlock = { type: 'actions', elements: [{ type: 'checkboxes', action_id: baseActionId, options: questionData.options.map(label => ({ text: { type: 'mrkdwn', text: label }, value: JSON.stringify({ label, question: questionData.questionText }) })) }] };
         break;
       case 'buttons':
       default:
-        // ✨ FIX 2: Use the option's array index to guarantee a unique action_id for each button
-        responseBlock = { 
-            type: 'actions', 
-            elements: questionData.options.map((label, optionIndex) => ({ 
-                type: 'button', 
-                text: { type: 'plain_text', text: label }, 
-                value: JSON.stringify({ label, question: questionData.questionText }), 
-                action_id: `${baseActionId}_btn${optionIndex}` // e.g., poll_response_12345_q0_btn1
-            })) 
-        };
+        responseBlock = { type: 'actions', elements: questionData.options.map((label, optionIndex) => ({ type: 'button', text: { type: 'plain_text', text: label }, value: JSON.stringify({ label, question: questionData.questionText }), action_id: `${baseActionId}_btn${optionIndex}` })) };
         break;
     }
-    pollBlocks.push(responseBlock);
+    allBlocks.push(responseBlock);
+  }
+  
+  // Add a single "Submit" button at the very end for checkbox-based surveys
+  if (parsedQuestions.some(q => q.pollFormat === 'checkboxes')) {
+      allBlocks.push(
+          { type: 'divider' },
+          { type: 'actions', elements: [{ type: 'button', text: { type: 'plain_text', text: 'Submit All My Answers'}, style: 'primary', action_id: 'submit_checkbox_answers' }] }
+      );
+  }
 
-    if (questionData.pollFormat === 'checkboxes') {
-        pollBlocks.push({ type: 'actions', elements: [{ type: 'button', text: { type: 'plain_text', text: 'Submit Answers'}, style: 'primary', action_id: 'submit_checkbox_answers', value: JSON.stringify({ question: questionData.questionText }) }] });
-    }
-
-    // Send the poll to each selected user
-    for (const userId of userIds) {
-      try {
-        await client.chat.postMessage({
-          channel: userId,
-          text: `A new survey question for you: ${questionData.questionText}`,
-          blocks: pollBlocks
-        });
-      } catch (error) {
-        console.error(`Failed to send DM to ${userId} for question "${questionData.questionText}"`, error);
-      }
+  // --- UPDATED: Send the single, combined survey message to each user ---
+  for (const userId of userIds) {
+    try {
+      await client.chat.postMessage({
+        channel: userId,
+        text: 'You have a new survey to complete!', // Fallback text for notifications
+        blocks: allBlocks,
+        unfurl_links: true, // This is needed to make video URLs expand
+        unfurl_media: true
+      });
+    } catch (error) {
+      console.error(`Failed to send survey DM to ${userId}`, error);
     }
   }
 });
