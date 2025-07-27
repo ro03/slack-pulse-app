@@ -3,7 +3,7 @@ if (process.env.NODE_ENV !== 'production') {
   require('dotenv').config();
 }
 
-const { App, ExpressReceiver } = require("@slack/bolt");
+const { App } = require('@slack/bolt');
 const { saveResponseToSheet } = require('./sheets');
 
 // Initialize the app
