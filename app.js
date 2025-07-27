@@ -157,7 +157,7 @@ app.view('poll_submission', async ({ ack, body, view, client }) => {
   const values = view.state.values;
   const userIds = values.users_block.users_select.selected_users;
 
-  // ✨ UPDATED: Parse multiple questions from the view state
+  // Parse multiple questions from the view state
   const parsedQuestions = [];
   const questionKeys = Object.keys(values).filter(key => key.startsWith('question_block_'));
   
@@ -176,27 +176,39 @@ app.view('poll_submission', async ({ ack, body, view, client }) => {
     }
   }
 
-  // Loop through each parsed question and send it
-  for (const questionData of parsedQuestions) {
-    // Re-use the block building logic from the previous step for each question
+  // Loop through each parsed question using .entries() to get an index
+  for (const [questionIndex, questionData] of parsedQuestions.entries()) {
+    
     let pollBlocks = [{
         type: 'section',
         text: { type: 'mrkdwn', text: `*${questionData.questionText}*` }
     }];
     
     let responseBlock;
-    const actionId = `poll_response_${Date.now()}`;
+    // ✨ FIX 1: Make the base actionId unique per question using the question's index
+    const baseActionId = `poll_response_${Date.now()}_q${questionIndex}`;
   
     switch (questionData.pollFormat) {
       case 'dropdown':
-        responseBlock = { type: 'actions', elements: [{ type: 'static_select', placeholder: { type: 'plain_text', text: 'Choose an answer' }, action_id: actionId, options: questionData.options.map(label => ({ text: { type: 'plain_text', text: label }, value: JSON.stringify({ label, question: questionData.questionText }) })) }] };
+        // Dropdowns are a single element, so the base ID is fine
+        responseBlock = { type: 'actions', elements: [{ type: 'static_select', placeholder: { type: 'plain_text', text: 'Choose an answer' }, action_id: baseActionId, options: questionData.options.map(label => ({ text: { type: 'plain_text', text: label }, value: JSON.stringify({ label, question: questionData.questionText }) })) }] };
         break;
       case 'checkboxes':
-        responseBlock = { type: 'actions', elements: [{ type: 'checkboxes', action_id: actionId, options: questionData.options.map(label => ({ text: { type: 'mrkdwn', text: label }, value: JSON.stringify({ label, question: questionData.questionText }) })) }] };
+        // Checkboxes are a single element, so the base ID is fine
+        responseBlock = { type: 'actions', elements: [{ type: 'checkboxes', action_id: baseActionId, options: questionData.options.map(label => ({ text: { type: 'mrkdwn', text: label }, value: JSON.stringify({ label, question: questionData.questionText }) })) }] };
         break;
       case 'buttons':
       default:
-        responseBlock = { type: 'actions', elements: questionData.options.map(label => ({ type: 'button', text: { type: 'plain_text', text: label }, value: JSON.stringify({ label, question: questionData.questionText }), action_id: `${actionId}_${label.replace(/\s+/g, '_')}` })) };
+        // ✨ FIX 2: Use the option's array index to guarantee a unique action_id for each button
+        responseBlock = { 
+            type: 'actions', 
+            elements: questionData.options.map((label, optionIndex) => ({ 
+                type: 'button', 
+                text: { type: 'plain_text', text: label }, 
+                value: JSON.stringify({ label, question: questionData.questionText }), 
+                action_id: `${baseActionId}_btn${optionIndex}` // e.g., poll_response_12345_q0_btn1
+            })) 
+        };
         break;
     }
     pollBlocks.push(responseBlock);
@@ -214,7 +226,7 @@ app.view('poll_submission', async ({ ack, body, view, client }) => {
           blocks: pollBlocks
         });
       } catch (error) {
-        console.error(`Failed to send DM to ${userId}`, error);
+        console.error(`Failed to send DM to ${userId} for question "${questionData.questionText}"`, error);
       }
     }
   }
