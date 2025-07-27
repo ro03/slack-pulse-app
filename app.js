@@ -1,9 +1,27 @@
+const { App, ExpressReceiver } = require('@slack/bolt');
+
+// 1. Create a receiver
+const receiver = new ExpressReceiver({
+  signingSecret: process.env.SLACK_SIGNING_SECRET,
+});
+
+// 2. Add your custom route to the receiver
+receiver.app.get('/', (req, res) => {
+  res.status(200).send('App is up and running!');
+});
+
+// 3. Initialize the app with the receiver
+const app = new App({
+  token: process.env.SLACK_BOT_TOKEN,
+  receiver: receiver, // Pass the custom receiver
+});
+
 // This check makes sure dotenv only runs on your local computer, not on Render
 if (process.env.NODE_ENV !== 'production') {
   require('dotenv').config();
 }
 
-const { App } = require('@slack/bolt');
+const { App, ExpressReceiver } = require('@slack/bolt');
 const { saveResponseToSheet } = require('./sheets');
 
 // Initialize the app
