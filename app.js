@@ -64,8 +64,9 @@ const generateModalBlocks = (questionCount = 1) => {
     blocks.push(
       { type: 'divider' },
       { type: 'header', text: { type: 'plain_text', text: `Question ${i}` } },
-      { type: 'input', block_id: `question_block_${i}`, label: { type: 'plain_text', text: 'Poll Question' }, element: { type: 'plain_text_input', action_id: `question_input_${i}` } },
-      { type: 'input', block_id: `options_block_${i}`, label: { type: 'plain_text', text: 'Answer Options (one per line)' }, element: { type: 'plain_text_input', multiline: true, action_id: `options_input_${i}` } },
+      // Questions and options are now optional
+      { type: 'input', optional: true, block_id: `question_block_${i}`, label: { type: 'plain_text', text: 'Poll Question' }, element: { type: 'plain_text_input', action_id: `question_input_${i}` } },
+      { type: 'input', optional: true, block_id: `options_block_${i}`, label: { type: 'plain_text', text: 'Answer Options (one per line)' }, element: { type: 'plain_text_input', multiline: true, action_id: `options_input_${i}` } },
       { type: 'input', block_id: `format_block_${i}`, label: { type: 'plain_text', text: 'Poll Format' }, element: { type: 'static_select', action_id: `format_select_${i}`, initial_option: { text: { type: 'plain_text', text: 'Buttons' }, value: 'buttons' }, options: [ { text: { type: 'plain_text', text: 'Buttons' }, value: 'buttons' }, { text: { type: 'plain_text', text: 'Dropdown Menu' }, value: 'dropdown' }, { text: { type: 'plain_text', text: 'Checkboxes (Multiple Answers)' }, value: 'checkboxes' } ] } }
     );
   }
@@ -76,7 +77,7 @@ const generateModalBlocks = (questionCount = 1) => {
     { type: 'actions', elements: [ { type: 'button', text: { type: 'plain_text', text: '➕ Add Another Question' }, action_id: 'add_question_button', value: `${questionCount}` } ] }
   );
 
-  // UPDATED: Changed from multi_users_select to multi_conversations_select
+  // The conversation selector for sending the survey
   blocks.push({
     type: 'input',
     block_id: 'destinations_block',
@@ -107,7 +108,7 @@ app.command('/ask', async ({ ack, body, client }) => {
         callback_id: 'poll_submission',
         title: { type: 'plain_text', text: 'Create a New Survey' },
         submit: { type: 'plain_text', text: 'Send Survey' },
-        blocks: generateModalBlocks(1) // Start with 1 question
+        blocks: generateModalBlocks(1)
       }
     });
   } catch (error) {
@@ -142,7 +143,6 @@ app.view('poll_submission', async ({ ack, body, view, client }) => {
   await ack();
 
   const values = view.state.values;
-  // UPDATED: Read from the new destinations_select element
   const conversationIds = values.destinations_block.destinations_select.selected_conversations;
 
   let allBlocks = [];
@@ -175,6 +175,7 @@ app.view('poll_submission', async ({ ack, body, view, client }) => {
     const optionsText = values[`options_block_${qIndex}`][`options_input_${qIndex}`].value;
     const pollFormat = values[`format_block_${qIndex}`][`format_select_${qIndex}`].selected_option.value;
 
+    // This check correctly ignores any questions that were left blank
     if (questionText && optionsText) {
       parsedQuestions.push({ questionText, options: optionsText.split('\n').filter(opt => opt.trim() !== ''), pollFormat });
     }
@@ -226,7 +227,7 @@ async function processAndSaveResponse(user, question, answer, timestamp) {
   await saveResponseToSheet({ user, question, answer, timestamp });
 }
 
-// UPDATED: Listener for buttons and dropdowns with channel-aware logic
+// Listener for buttons and dropdowns with channel-aware logic
 app.action(/^poll_response_.+$/, async ({ ack, body, client, action }) => {
   await ack();
 
@@ -241,7 +242,7 @@ app.action(/^poll_response_.+$/, async ({ ack, body, client, action }) => {
   const channelId = body.channel.id;
 
   if (channelId.startsWith('U')) {
-    // This is a DM. Update the message in place (original behavior).
+    // This is a DM. Update the message in place.
     const originalBlocks = body.message.blocks;
     const actionBlockId = body.actions[0].block_id;
     const blockIndexToReplace = originalBlocks.findIndex(block => block.block_id === actionBlockId);
@@ -262,7 +263,7 @@ app.action(/^poll_response_.+$/, async ({ ack, body, client, action }) => {
     });
 
   } else {
-    // This is a public or private channel. Send a private, ephemeral confirmation.
+    // This is a channel. Send a private, ephemeral confirmation.
     await client.chat.postEphemeral({
       channel: channelId,
       user: body.user.id,
@@ -271,7 +272,7 @@ app.action(/^poll_response_.+$/, async ({ ack, body, client, action }) => {
   }
 });
 
-// UPDATED: Listener for 'Submit Answers' with channel-aware logic
+// Listener for 'Submit Answers' with channel-aware logic
 app.action('submit_checkbox_answers', async ({ ack, body, client }) => {
     await ack();
 
