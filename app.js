@@ -235,31 +235,25 @@ app.view('poll_submission', async ({ ack, body, view, client }) => {
   }
 });
 
-
-// --- The Response Handlers below remain unchanged from the previous version ---
-// --- Replace your existing action listeners with these new versions ---
-
 // Generic handler to process and save a response
 async function processAndSaveResponse(user, question, answer, timestamp) {
   // This function doesn't need to change.
   await saveResponseToSheet({ user, question, answer, timestamp });
 }
 
-// Listener for buttons and dropdowns
 // ✨ UPDATED: Listener for buttons and dropdowns that only updates the answered question
 app.action(/^poll_response_.+$/, async ({ ack, body, client, action }) => {
   await ack();
-  
+
   // This listener handles non-checkbox questions (buttons and dropdowns)
   if (action.type === 'button' || action.type === 'static_select') {
     const payload = JSON.parse(action.type === 'button' ? action.value : action.selected_option.value);
     const userInfo = await client.users.info({ user: body.user.id });
     const userName = userInfo.user.profile.real_name || userInfo.user.name;
-    await client.chat.update({ channel: body.channel.id, ts: body.message.ts, blocks: [{ type: 'section', text: { type: 'mrkdwn', text: `✅ Thank you, ${userName}! Your response "*${payload.label}*" has been recorded.` } }] });
 
     // 1. Get all the blocks from the original survey message
     const originalBlocks = body.message.blocks;
-    
+
     // 2. Find the exact block that the user interacted with
     const actionBlockId = body.actions[0].block_id;
     const blockIndexToReplace = originalBlocks.findIndex(block => block.block_id === actionBlockId);
@@ -276,25 +270,22 @@ app.action(/^poll_response_.+$/, async ({ ack, body, client, action }) => {
           }
         ]
       };
-      
+
       // 4. Replace the old question block with the new confirmation block
       originalBlocks.splice(blockIndexToReplace - 1, 2, confirmationBlock);
     }
-    
+
     // 5. Update the message with the modified blocks
     await client.chat.update({
       channel: body.channel.id,
       ts: body.message.ts,
       blocks: originalBlocks
     });
-    
+
     // Save the response to your sheet
     await processAndSaveResponse(userName, payload.question, payload.label, new Date().toISOString());
   }
 });
-
-// Listener for the 'Submit Answers' button for checkboxes
-app.action('submit_checkbox_answers', async ({ ack, body, client, action }) => {
 
 // ✨ UPDATED: Listener for the 'Submit Answers' button for one or more checkbox questions
 app.action('submit_checkbox_answers', async ({ ack, body, client }) => {
@@ -302,20 +293,12 @@ app.action('submit_checkbox_answers', async ({ ack, body, client }) => {
 
     const userInfo = await client.users.info({ user: body.user.id });
     const userName = userInfo.user.profile.real_name || userInfo.user.name;
-    const actionBlock = body.message.blocks.find(b => b.type === 'actions' && b.elements[0].type === 'checkboxes');
-    if (!actionBlock) return;
-    const actionId = actionBlock.elements[0].action_id;
-    const selectedOptions = body.state.values[actionBlock.block_id][actionId].selected_options;
-    const question = JSON.parse(body.actions[0].value).question;
-    if (selectedOptions.length === 0) {
-        await client.chat.postEphemeral({ user: body.user.id, channel: body.channel.id, text: "Please select at least one option before submitting." });
-        return;
-    
+
     // 1. Get all the blocks from the original survey message
     let originalBlocks = body.message.blocks;
     let somethingWasAnswered = false;
-    
-    // 2. Find all checkbox questions in the message
+
+    // 2. Find all checkbox questions in the message state
     const checkboxStates = body.state.values;
 
     for (const blockId in checkboxStates) {
@@ -335,7 +318,7 @@ app.action('submit_checkbox_answers', async ({ ack, body, client }) => {
         const blockIndexToReplace = originalBlocks.findIndex(b => b.block_id === blockId);
 
         if (blockIndexToReplace > -1) {
-            const headerBlock = originalBlocks[blockIndexToReplace - 1];
+            const headerBlock = originalBlocks[blockIndexToReplace - 1]; // Assumes header is right before
             const confirmationBlock = {
                 type: 'context',
                 elements: [{
@@ -343,6 +326,7 @@ app.action('submit_checkbox_answers', async ({ ack, body, client }) => {
                     text: `✅ *${headerBlock.text.text}* — You answered: *${answerText}*`
                 }]
             };
+            // Replace the header and the question with the confirmation
             originalBlocks.splice(blockIndexToReplace - 1, 2, confirmationBlock);
 
             // Save each answer to your sheet
@@ -351,12 +335,8 @@ app.action('submit_checkbox_answers', async ({ ack, body, client }) => {
             }
         }
     }
-    const answers = selectedOptions.map(opt => JSON.parse(opt.value).label);
-    const answerText = answers.map(a => `"${a}"`).join(', ');
-    await client.chat.update({ channel: body.channel.id, ts: body.message.ts, blocks: [{ type: 'section', text: { type: 'mrkdwn', text: `✅ Thank you, ${userName}! Your responses *${answerText}* have been recorded.` } }] });
-    for (const answer of answers) {
-        await processAndSaveResponse(userName, question, answer, new Date().toISOString());
 
+    // If no checkboxes were checked at all, send an ephemeral message
     if (!somethingWasAnswered) {
         await client.chat.postEphemeral({
             user: body.user.id,
@@ -365,7 +345,7 @@ app.action('submit_checkbox_answers', async ({ ack, body, client }) => {
         });
         return;
     }
-    
+
     // 4. Update the message with all the modified blocks
     await client.chat.update({
         channel: body.channel.id,
@@ -373,7 +353,6 @@ app.action('submit_checkbox_answers', async ({ ack, body, client }) => {
         blocks: originalBlocks
     });
 });
-
 
 // Start your app
 (async () => {
