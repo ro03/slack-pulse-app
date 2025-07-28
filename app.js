@@ -76,8 +76,23 @@ const generateModalBlocks = (questionCount = 1) => {
     { type: 'actions', elements: [ { type: 'button', text: { type: 'plain_text', text: '➕ Add Another Question' }, action_id: 'add_question_button', value: `${questionCount}` } ] }
   );
 
-  // Add the user selector at the end
-  blocks.push({ type: 'input', block_id: 'users_block', label: { type: 'plain_text', text: 'Send survey to these users' }, element: { type: 'multi_users_select', placeholder: { type: 'plain_text', text: 'Select users' }, action_id: 'users_select' } });
+  // ✨ MODIFIED: Add a channel selector instead of a user selector
+  blocks.push({ 
+    type: 'input', 
+    block_id: 'channel_block', 
+    label: { type: 'plain_text', text: 'Post survey in this channel' }, 
+    element: { 
+      type: 'conversations_select', 
+      placeholder: { type: 'plain_text', text: 'Select a channel' }, 
+      action_id: 'channel_select',
+      // This filter ensures users can only select public channels
+      filter: {
+          "include": [
+              "public"
+          ]
+      }
+    } 
+  });
 
   return blocks;
 };
@@ -93,7 +108,6 @@ app.command('/ask', async ({ ack, body, client }) => {
         callback_id: 'poll_submission',
         title: { type: 'plain_text', text: 'Create a New Survey' },
         submit: { type: 'plain_text', text: 'Send Survey' },
-        // ✨ MODIFIED: Start with 0 questions, allowing for intro-only messages
         blocks: generateModalBlocks(0) 
       }
     });
@@ -106,15 +120,13 @@ app.command('/ask', async ({ ack, body, client }) => {
 app.action('add_question_button', async ({ ack, body, client, action }) => {
   await ack();
 
-  // Get the current number of questions from the button's value
   const currentQuestionCount = parseInt(action.value, 10);
   const newQuestionCount = currentQuestionCount + 1;
 
   try {
-    // Update the view with a new set of blocks
     await client.views.update({
       view_id: body.view.id,
-      hash: body.view.hash, // Required for view updates
+      hash: body.view.hash,
       view: {
         type: 'modal',
         callback_id: 'poll_submission',
@@ -134,8 +146,7 @@ app.view('poll_submission', async ({ ack, body, view, client }) => {
   await ack();
 
   const values = view.state.values;
-  const userIds = values.users_block.users_select.selected_users;
-
+  
   // This will hold ALL blocks for the single survey message
   let allBlocks = [];
 
@@ -158,14 +169,12 @@ app.view('poll_submission', async ({ ack, body, view, client }) => {
     });
   }
   if (videoUrl) {
-    // For video, we post the link and let Slack "unfurl" it into an embedded player
     allBlocks.push({
       type: 'section',
       text: { type: 'mrkdwn', text: `▶️ <${videoUrl}>` }
     });
   }
 
-  // Add a divider if we had any intro content
   if (allBlocks.length > 0) {
     allBlocks.push({ type: 'divider' });
   }
@@ -187,32 +196,28 @@ app.view('poll_submission', async ({ ack, body, view, client }) => {
 
   // Loop through questions and ADD their blocks to the 'allBlocks' array
   for (const [questionIndex, questionData] of parsedQuestions.entries()) {
-
-    // Use a header for each question to separate them visually
     allBlocks.push({
         type: 'header',
         text: { type: 'plain_text', text: questionData.questionText }
     });
-
     let responseBlock;
     const baseActionId = `poll_response_${Date.now()}_q${questionIndex}`;
-
     switch (questionData.pollFormat) {
       case 'dropdown':
-        responseBlock = { type: 'actions', elements: [{ type: 'static_select', placeholder: { type: 'plain_text', text: 'Choose an answer' }, action_id: baseActionId, options: questionData.options.map(label => ({ text: { type: 'plain_text', text: label }, value: JSON.stringify({ label, question: questionData.questionText }) })) }] };
+        responseBlock = { type: 'actions', block_id: `actions_${questionIndex}`, elements: [{ type: 'static_select', placeholder: { type: 'plain_text', text: 'Choose an answer' }, action_id: baseActionId, options: questionData.options.map(label => ({ text: { type: 'plain_text', text: label }, value: JSON.stringify({ label, question: questionData.questionText }) })) }] };
         break;
       case 'checkboxes':
-        responseBlock = { type: 'actions', elements: [{ type: 'checkboxes', action_id: baseActionId, options: questionData.options.map(label => ({ text: { type: 'mrkdwn', text: label }, value: JSON.stringify({ label, question: questionData.questionText }) })) }] };
+        responseBlock = { type: 'actions', block_id: `actions_${questionIndex}`, elements: [{ type: 'checkboxes', action_id: baseActionId, options: questionData.options.map(label => ({ text: { type: 'mrkdwn', text: label }, value: JSON.stringify({ label, question: questionData.questionText }) })) }] };
         break;
       case 'buttons':
       default:
-        responseBlock = { type: 'actions', elements: questionData.options.map((label, optionIndex) => ({ type: 'button', text: { type: 'plain_text', text: label }, value: JSON.stringify({ label, question: questionData.questionText }), action_id: `${baseActionId}_btn${optionIndex}` })) };
+        responseBlock = { type: 'actions', block_id: `actions_${questionIndex}`, elements: questionData.options.map((label, optionIndex) => ({ type: 'button', text: { type: 'plain_text', text: label }, value: JSON.stringify({ label, question: questionData.questionText }), action_id: `${baseActionId}_btn${optionIndex}` })) };
         break;
     }
     allBlocks.push(responseBlock);
   }
 
-  // Add a single "Submit" button at the very end for checkbox-based surveys
+  // Add a "Submit" button for checkbox-based surveys
   if (parsedQuestions.some(q => q.pollFormat === 'checkboxes')) {
       allBlocks.push(
           { type: 'divider' },
@@ -220,40 +225,52 @@ app.view('poll_submission', async ({ ack, body, view, client }) => {
       );
   }
 
-  // ✨ NEW: Check if the survey has any content before sending
+  // Check if the survey has any content before sending
   if (allBlocks.length === 0) {
     console.log(`User ${body.user.name} tried to send an empty survey.`);
     try {
       await client.chat.postEphemeral({
         user: body.user.id,
-        channel: body.user.id, // The channel is the user's DM with the bot
+        channel: body.user.id,
         text: "⚠️ Your survey wasn't sent because it was empty. Please add an introduction or at least one question."
       });
     } catch (error) {
       console.error("Failed to send ephemeral warning:", error);
     }
-    return; // Stop processing to prevent sending empty messages
+    return;
   }
+  
+  // ✨ MODIFIED: Get the selected channel and post the survey there
+  const selectedChannel = values.channel_block.channel_select.selected_conversation;
 
-  // Send the single, combined survey message to each user
-  for (const userId of userIds) {
+  if (selectedChannel) {
     try {
       await client.chat.postMessage({
-        channel: userId,
-        text: 'You have a new survey to complete!', // Fallback text for notifications
+        channel: selectedChannel,
+        text: 'A new survey has been posted!', // Fallback text for notifications
         blocks: allBlocks,
-        unfurl_links: true, // This is needed to make video URLs expand
+        unfurl_links: true,
         unfurl_media: true
       });
     } catch (error) {
-      console.error(`Failed to send survey DM to ${userId}`, error);
+      console.error(`Failed to post survey to channel ${selectedChannel}`, error);
+    }
+  } else {
+    // Optional: Send a message if the user didn't select a channel
+    try {
+      await client.chat.postEphemeral({
+        user: body.user.id,
+        channel: body.user.id,
+        text: "⚠️ Your survey wasn't sent because you didn't select a channel to post it in."
+      });
+    } catch (error) {
+      console.error("Failed to send ephemeral warning:", error);
     }
   }
 });
 
 // Generic handler to process and save a response
 async function processAndSaveResponse(user, question, answer, timestamp) {
-  // This function doesn't need to change.
   await saveResponseToSheet({ user, question, answer, timestamp });
 }
 
@@ -261,7 +278,6 @@ async function processAndSaveResponse(user, question, answer, timestamp) {
 app.action(/^poll_response_.+$/, async ({ ack, body, client, action }) => {
   await ack();
 
-  // This listener handles non-checkbox questions (buttons and dropdowns)
   if (action.type === 'button' || action.type === 'static_select') {
     const payload = JSON.parse(action.type === 'button' ? action.value : action.selected_option.value);
     const userInfo = await client.users.info({ user: body.user.id });
@@ -272,7 +288,7 @@ app.action(/^poll_response_.+$/, async ({ ack, body, client, action }) => {
     const blockIndexToReplace = originalBlocks.findIndex(block => block.block_id === actionBlockId);
 
     if (blockIndexToReplace > -1) {
-      const headerBlock = originalBlocks[blockIndexToReplace - 1]; // Assumes a header is right before
+      const headerBlock = originalBlocks[blockIndexToReplace - 1];
       const confirmationBlock = {
         type: 'context',
         elements: [
@@ -282,7 +298,6 @@ app.action(/^poll_response_.+$/, async ({ ack, body, client, action }) => {
           }
         ]
       };
-      // Replace the old question block with the new confirmation block
       originalBlocks.splice(blockIndexToReplace - 1, 2, confirmationBlock);
     }
 
@@ -292,12 +307,11 @@ app.action(/^poll_response_.+$/, async ({ ack, body, client, action }) => {
       blocks: originalBlocks
     });
 
-    // Save the response to your sheet
     await processAndSaveResponse(userName, payload.question, payload.label, new Date().toISOString());
   }
 });
 
-// Listener for the 'Submit Answers' button for one or more checkbox questions
+// Listener for the 'Submit Answers' button for checkbox questions
 app.action('submit_checkbox_answers', async ({ ack, body, client }) => {
     await ack();
 
@@ -320,11 +334,10 @@ app.action('submit_checkbox_answers', async ({ ack, body, client }) => {
         somethingWasAnswered = true;
         const answers = selectedOptions.map(opt => JSON.parse(opt.value));
         const answerText = answers.map(a => `"${a.label}"`).join(', ');
-
         const blockIndexToReplace = originalBlocks.findIndex(b => b.block_id === blockId);
 
         if (blockIndexToReplace > -1) {
-            const headerBlock = originalBlocks[blockIndexToReplace - 1]; // Assumes header is right before
+            const headerBlock = originalBlocks[blockIndexToReplace - 1];
             const confirmationBlock = {
                 type: 'context',
                 elements: [{
@@ -332,10 +345,7 @@ app.action('submit_checkbox_answers', async ({ ack, body, client }) => {
                     text: `✅ *${headerBlock.text.text}* — You answered: *${answerText}*`
                 }]
             };
-            // Replace the header and the question with the confirmation
             originalBlocks.splice(blockIndexToReplace - 1, 2, confirmationBlock);
-
-            // Save each answer to your sheet
             for (const answer of answers) {
                 await processAndSaveResponse(userName, answer.question, answer.label, new Date().toISOString());
             }
