@@ -23,11 +23,11 @@ const app = new App({
   receiver: receiver,
 });
 
-// ✨ NEW: Helper function to generate modal blocks dynamically
+// Helper function to generate modal blocks dynamically
 const generateModalBlocks = (questionCount = 1) => {
   let blocks = [];
 
-  // --- NEW: Section for optional introductory content ---
+  // Section for optional introductory content
   blocks.push(
     {
       type: 'header',
@@ -101,7 +101,7 @@ app.command('/ask', async ({ ack, body, client }) => {
   }
 });
 
-// ✨ NEW: This listener handles the "Add Another Question" button click
+// This listener handles the "Add Another Question" button click
 app.action('add_question_button', async ({ ack, body, client, action }) => {
   await ack();
 
@@ -135,10 +135,10 @@ app.view('poll_submission', async ({ ack, body, view, client }) => {
   const values = view.state.values;
   const userIds = values.users_block.users_select.selected_users;
 
-  // --- NEW: This will hold ALL blocks for the single survey message ---
+  // This will hold ALL blocks for the single survey message
   let allBlocks = [];
 
-  // --- NEW: Read and build the introductory blocks ---
+  // Read and build the introductory blocks
   const introMessage = values.intro_message_block?.intro_message_input?.value;
   const imageUrl = values.image_url_block?.image_url_input?.value;
   const videoUrl = values.video_url_block?.video_url_input?.value;
@@ -184,7 +184,7 @@ app.view('poll_submission', async ({ ack, body, view, client }) => {
     }
   }
 
-  // --- UPDATED: Loop through questions and ADD their blocks to the 'allBlocks' array ---
+  // Loop through questions and ADD their blocks to the 'allBlocks' array
   for (const [questionIndex, questionData] of parsedQuestions.entries()) {
 
     // Use a header for each question to separate them visually
@@ -219,7 +219,7 @@ app.view('poll_submission', async ({ ack, body, view, client }) => {
       );
   }
 
-  // --- UPDATED: Send the single, combined survey message to each user ---
+  // Send the single, combined survey message to each user
   for (const userId of userIds) {
     try {
       await client.chat.postMessage({
@@ -235,32 +235,24 @@ app.view('poll_submission', async ({ ack, body, view, client }) => {
   }
 });
 
-
-// --- The Response Handlers below remain unchanged from the previous version ---
-// --- Replace your existing action listeners with these new versions ---
-
 // Generic handler to process and save a response
 async function processAndSaveResponse(user, question, answer, timestamp) {
   // This function doesn't need to change.
   await saveResponseToSheet({ user, question, answer, timestamp });
 }
 
-// Listener for buttons and dropdowns
-// ✨ UPDATED: Listener for buttons and dropdowns that only updates the answered question
+// Listener for buttons and dropdowns that only updates the answered question
 app.action(/^poll_response_.+$/, async ({ ack, body, client, action }) => {
   await ack();
-  
 
   // This listener handles non-checkbox questions (buttons and dropdowns)
   if (action.type === 'button' || action.type === 'static_select') {
     const payload = JSON.parse(action.type === 'button' ? action.value : action.selected_option.value);
     const userInfo = await client.users.info({ user: body.user.id });
     const userName = userInfo.user.profile.real_name || userInfo.user.name;
-    await client.chat.update({ channel: body.channel.id, ts: body.message.ts, blocks: [{ type: 'section', text: { type: 'mrkdwn', text: `✅ Thank you, ${userName}! Your response "*${payload.label}*" has been recorded.` } }] });
 
     // 1. Get all the blocks from the original survey message
     const originalBlocks = body.message.blocks;
-    
 
     // 2. Find the exact block that the user interacted with
     const actionBlockId = body.actions[0].block_id;
@@ -279,49 +271,32 @@ app.action(/^poll_response_.+$/, async ({ ack, body, client, action }) => {
         ]
       };
       
-
       // 4. Replace the old question block with the new confirmation block
       originalBlocks.splice(blockIndexToReplace - 1, 2, confirmationBlock);
     }
     
-
     // 5. Update the message with the modified blocks
     await client.chat.update({
       channel: body.channel.id,
       ts: body.message.ts,
       blocks: originalBlocks
     });
-    
 
     // Save the response to your sheet
     await processAndSaveResponse(userName, payload.question, payload.label, new Date().toISOString());
   }
 });
 
-// Listener for the 'Submit Answers' button for checkboxes
-app.action('submit_checkbox_answers', async ({ ack, body, client, action }) => {
-
-// ✨ UPDATED: Listener for the 'Submit Answers' button for one or more checkbox questions
+// Listener for the 'Submit Answers' button for one or more checkbox questions
 app.action('submit_checkbox_answers', async ({ ack, body, client }) => {
     await ack();
 
     const userInfo = await client.users.info({ user: body.user.id });
     const userName = userInfo.user.profile.real_name || userInfo.user.name;
-    const actionBlock = body.message.blocks.find(b => b.type === 'actions' && b.elements[0].type === 'checkboxes');
-    if (!actionBlock) return;
-    const actionId = actionBlock.elements[0].action_id;
-    const selectedOptions = body.state.values[actionBlock.block_id][actionId].selected_options;
-    const question = JSON.parse(body.actions[0].value).question;
-    if (selectedOptions.length === 0) {
-        await client.chat.postEphemeral({ user: body.user.id, channel: body.channel.id, text: "Please select at least one option before submitting." });
-        return;
-    
 
     // 1. Get all the blocks from the original survey message
     let originalBlocks = body.message.blocks;
     let somethingWasAnswered = false;
-    
-    // 2. Find all checkbox questions in the message
 
     // 2. Find all checkbox questions in the message state
     const checkboxStates = body.state.values;
@@ -343,7 +318,7 @@ app.action('submit_checkbox_answers', async ({ ack, body, client }) => {
         const blockIndexToReplace = originalBlocks.findIndex(b => b.block_id === blockId);
 
         if (blockIndexToReplace > -1) {
-            const headerBlock = originalBlocks[blockIndexToReplace - 1];
+            // This is the line that was duplicated. It is now fixed.
             const headerBlock = originalBlocks[blockIndexToReplace - 1]; // Assumes header is right before
             const confirmationBlock = {
                 type: 'context',
@@ -361,11 +336,6 @@ app.action('submit_checkbox_answers', async ({ ack, body, client }) => {
             }
         }
     }
-    const answers = selectedOptions.map(opt => JSON.parse(opt.value).label);
-    const answerText = answers.map(a => `"${a}"`).join(', ');
-    await client.chat.update({ channel: body.channel.id, ts: body.message.ts, blocks: [{ type: 'section', text: { type: 'mrkdwn', text: `✅ Thank you, ${userName}! Your responses *${answerText}* have been recorded.` } }] });
-    for (const answer of answers) {
-        await processAndSaveResponse(userName, question, answer, new Date().toISOString());
 
     // If no checkboxes were checked at all, send an ephemeral message
     if (!somethingWasAnswered) {
@@ -376,16 +346,20 @@ app.action('submit_checkbox_answers', async ({ ack, body, client }) => {
         });
         return;
     }
-    
 
-    // 4. Update the message with all the modified blocks
+    // 4. Remove the final "Submit All My Answers" button
+    const submitButtonIndex = originalBlocks.findIndex(b => b.type === 'actions' && b.elements[0]?.action_id === 'submit_checkbox_answers');
+    if (submitButtonIndex > -1) {
+        originalBlocks.splice(submitButtonIndex, 2); // Also removes the preceding divider
+    }
+
+    // 5. Update the message with all the modified blocks
     await client.chat.update({
         channel: body.channel.id,
         ts: body.message.ts,
         blocks: originalBlocks
     });
 });
-
 
 // Start your app
 (async () => {
