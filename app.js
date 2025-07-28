@@ -1,7 +1,7 @@
 // 1. All require statements should be at the top
 const { App, ExpressReceiver } = require('@slack/bolt');
 const { saveResponseToSheet } = require('./sheets');
-const { getMainMenuBlocks, getPollCreationBlocks } = require('./views'); // We'll define these later
+// ✨ FIX: The incorrect require('./views') line has been removed from here.
 
 // 2. Configure dotenv for local development
 if (process.env.NODE_ENV !== 'production') {
@@ -26,7 +26,7 @@ const app = new App({
 
 
 // =================================================================
-// ✨ SECTION 1: VIEW DEFINITIONS
+// SECTION 1: VIEW DEFINITIONS
 // For better organization, we define the modal blocks in functions.
 // =================================================================
 
@@ -112,7 +112,7 @@ const getPollCreationBlocks = (metadata) => {
 
 
 // =================================================================
-// ✨ SECTION 2: APP LISTENERS (COMMANDS AND ACTIONS)
+// SECTION 2: APP LISTENERS (COMMANDS AND ACTIONS)
 // This is where the app responds to user interactions.
 // =================================================================
 
@@ -213,7 +213,7 @@ app.action('add_question_button', async ({ ack, body, client }) => {
 
 
 // =================================================================
-// ✨ SECTION 3: FINAL SUBMISSION HANDLING
+// SECTION 3: FINAL SUBMISSION HANDLING
 // =================================================================
 
 app.view('poll_submission', async ({ ack, body, view, client }) => {
@@ -281,7 +281,7 @@ app.view('poll_submission', async ({ ack, body, view, client }) => {
 
 
 // =================================================================
-// ✨ SECTION 4: RESPONSE HANDLING (No changes needed here)
+// SECTION 4: RESPONSE HANDLING (No changes needed here)
 // =================================================================
 
 // Generic handler to process and save a response
@@ -325,7 +325,7 @@ app.action(/^poll_response_.+$/, async ({ ack, body, client, action }) => {
 
 
 // =================================================================
-// ✨ SECTION 5: APP STARTUP
+// SECTION 5: APP STARTUP
 // =================================================================
 
 (async () => {
