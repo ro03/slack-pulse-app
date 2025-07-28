@@ -1,6 +1,5 @@
 // 1. All require statements should be at the top
 const { App, ExpressReceiver } = require('@slack/bolt');
-const { saveResponseToSheet } = require('./sheets');
 const cron = require('node-cron');
 const {
   getIncompleteCandidatesCount,
@@ -10,6 +9,7 @@ const {
   getLeaderboard
 } = require('./dataSource');
 
+// NOTE: require('./sheets') has been removed from here to prevent slow startup times.
 
 // 2. Configure dotenv for local development
 if (process.env.NODE_ENV !== 'production') {
@@ -18,8 +18,6 @@ if (process.env.NODE_ENV !== 'production') {
 
 // --- ✨ NEW: Configuration ---
 // IMPORTANT: Replace this with the actual channel ID you want to post in.
-// You can get this by right-clicking the channel name in Slack and selecting "Copy link",
-// then grabbing the ID that starts with 'C' from the URL.
 const HYGIENE_CHANNEL_ID = 'C12345ABCDE'; 
 const ATS_CANDIDATES_URL = 'https://youra-ts.com/candidates?filter=missing-notes'; // Optional: Link for the reminder button
 
@@ -42,8 +40,6 @@ const app = new App({
 
 
 // --- FEATURE 2: Polls & Pulse Checks (Existing Code) ---
-// This powerful poll creator already fulfills the "Polls & Pulse Checks" requirement.
-// The /ask command can be used for simple one-question polls or complex surveys.
 const generateModalBlocks = (questionCount = 1) => {
   let blocks = [];
   blocks.push({ type: 'header', text: { type: 'plain_text', text: 'Survey Introduction (Optional)' } }, { type: 'input', block_id: 'intro_message_block', optional: true, label: { type: 'plain_text', text: 'Introductory Message' }, element: { type: 'plain_text_input', multiline: true, action_id: 'intro_message_input' } }, { type: 'input', block_id: 'image_url_block', optional: true, label: { type: 'plain_text', text: 'Image or GIF URL' }, element: { type: 'plain_text_input', action_id: 'image_url_input', placeholder: { type: 'plain_text', text: 'https://example.com/image.gif' } } }, { type: 'input', block_id: 'video_url_block', optional: true, label: { type: 'plain_text', text: 'YouTube or Vimeo Video URL' }, element: { type: 'plain_text_input', action_id: 'video_url_input', placeholder: { type: 'plain_text', text: 'https://www.youtube.com/watch?v=...' } } });
@@ -116,7 +112,10 @@ app.view('poll_submission', async ({ ack, body, view, client }) => {
   }
 });
 
+// CORRECTED: This helper function is now standalone and "lazy loads" the sheets module.
 async function processAndSaveResponse(user, question, answer, timestamp) {
+  // LAZY LOAD: Require the module right before you use it to avoid startup timeouts.
+  const { saveResponseToSheet } = require('./sheets');
   await saveResponseToSheet({ user, question, answer, timestamp });
 }
 
@@ -135,13 +134,8 @@ app.action(/^poll_response_.+$/, async ({ ack, body, client, action }) => {
       originalBlocks.splice(blockIndexToReplace - 1, 2, confirmationBlock);
     }
     await client.chat.update({ channel: body.channel.id, ts: body.message.ts, blocks: originalBlocks });
-  await processAndSaveResponse(userName, payload.question, payload.label, new Date().toISOString());
-
-    async function processAndSaveResponse(user, question, answer, timestamp) {
-  // LAZY LOAD: Require the module right before you use it
-  const { saveResponseToSheet } = require('./sheets');
-  await saveResponseToSheet({ user, question, answer, timestamp });
-}
+    await processAndSaveResponse(userName, payload.question, payload.label, new Date().toISOString());
+  }
 });
 
 app.action('submit_checkbox_answers', async ({ ack, body, client }) => {
@@ -175,8 +169,6 @@ app.action('submit_checkbox_answers', async ({ ack, body, client }) => {
     await client.chat.update({ channel: body.channel.id, ts: body.message.ts, blocks: originalBlocks });
 });
 
-// --- END OF EXISTING POLL CODE ---
-
 // --- ✨ FEATURE 3: Slash Commands ---
 
 app.command('/check-candidate', async ({ command, ack, respond }) => {
@@ -198,7 +190,7 @@ app.command('/data-hygiene-status', async ({ ack, respond }) => {
       { type: 'header', text: { type: 'plain_text', text: 'Current Data Hygiene Status' } },
       { type: 'section', text: { type: 'mrkdwn', text: `- *Stale Candidates*: ${status.stale}\n- *Missing Notes*: ${status.missingNotes}\n- *Potential Duplicates*: ${status.duplicates}` } }
     ],
-    response_type: 'ephemeral' // 'in_channel' to show to everyone
+    response_type: 'ephemeral'
   });
 });
 
@@ -207,13 +199,12 @@ app.command('/hygiene-tip', async ({ ack, respond }) => {
   const tip = getRandomTip();
   await respond({
     text: `💡 Tip: ${tip}`,
-    response_type: 'in_channel' // 'ephemeral' to show only to the user
+    response_type: 'in_channel'
   });
 });
 
 // --- ✨ FEATURE 7: Quick Feedback Flow ---
 
-// This command posts a message with a button that opens the feedback modal.
 app.command('/send-feedback', async ({ ack, client, channel_id }) => {
   await ack();
   try {
@@ -233,7 +224,6 @@ app.command('/send-feedback', async ({ ack, client, channel_id }) => {
   }
 });
 
-// Listens for the button click and opens the modal
 app.action('open_feedback_modal', async ({ ack, body, client }) => {
   await ack();
   try {
@@ -257,23 +247,18 @@ app.action('open_feedback_modal', async ({ ack, body, client }) => {
   }
 });
 
-// Handles the modal submission
 app.view('feedback_submission', async ({ ack, view, client, body }) => {
+  await ack();
   const feedbackText = view.state.values.feedback_block.feedback_input.value;
   const user = body.user.id;
 
-  // Acknowledge the view submission.
-  // If you want to close the modal, provide an empty body.
-  await ack();
-
-  // Here, you would save the feedback to your database or send it to an admin.
   console.log(`Feedback from <@${user}>: ${feedbackText}`);
   
-  // Send a confirmation message to the user
   try {
     await client.chat.postMessage({
       channel: user,
-      text: 'Thank you for your feedback! We've received it. 🙏'
+      // CORRECTED: Switched to double quotes to handle the apostrophe
+      text: "Thank you for your feedback! We've received it. 🙏"
     });
   } catch (error) {
     console.error(error);
@@ -284,14 +269,11 @@ app.view('feedback_submission', async ({ ack, view, client, body }) => {
 // --- ✨ FEATURES 1, 4, 5, 6: Scheduled Posts ---
 
 // Schedule format: [minute] [hour] [day of month] [month] [day of week]
-// See https://crontab.guru for help
-
-// Feature 4: Weekly "Hygiene Snapshot" (Every Monday at 9:00 AM)
 cron.schedule('0 9 * * 1', async () => {
   try {
     const status = await getHygieneStatus();
     await app.client.chat.postMessage({
-      token: process.env.SLACK_BOT_TOKEN, // cron jobs require the token
+      token: process.env.SLACK_BOT_TOKEN,
       channel: HYGIENE_CHANNEL_ID,
       text: 'Weekly Data Hygiene Report',
       blocks: [
@@ -308,8 +290,6 @@ cron.schedule('0 9 * * 1', async () => {
   timezone: "Europe/Warsaw" // Set to your team's timezone
 });
 
-
-// Feature 6: "Tip of the Week" (Every Wednesday at 10:00 AM)
 cron.schedule('0 10 * * 3', async () => {
   try {
     const tip = getRandomTip();
@@ -326,15 +306,12 @@ cron.schedule('0 10 * * 3', async () => {
   timezone: "Europe/Warsaw"
 });
 
-// Features 1 & 5: Automated Reminder and Leaderboard (Every Friday at 2:00 PM)
 cron.schedule('0 14 * * 5', async () => {
   try {
-    // Feature 1: Reminder
     const count = await getIncompleteCandidatesCount();
     const reminderBlocks = [
       { type: 'section', text: { type: 'mrkdwn', text: `🧹 *Reminder*: You have *${count} candidates* without recent notes. Let’s keep our data clean!` } }
     ];
-    // Add the button only if a URL is configured
     if (ATS_CANDIDATES_URL) {
       reminderBlocks.push({
         type: 'actions',
@@ -342,7 +319,6 @@ cron.schedule('0 14 * * 5', async () => {
       });
     }
 
-    // Feature 5: Leaderboard
     const leaderboard = await getLeaderboard();
     const leaderboardText = leaderboard
       .map((user, index) => `${index + 1}. <@${user.userId}> – ${user.score} updates`)
