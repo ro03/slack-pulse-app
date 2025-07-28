@@ -135,8 +135,13 @@ app.action(/^poll_response_.+$/, async ({ ack, body, client, action }) => {
       originalBlocks.splice(blockIndexToReplace - 1, 2, confirmationBlock);
     }
     await client.chat.update({ channel: body.channel.id, ts: body.message.ts, blocks: originalBlocks });
-    await processAndSaveResponse(userName, payload.question, payload.label, new Date().toISOString());
-  }
+  await processAndSaveResponse(userName, payload.question, payload.label, new Date().toISOString());
+
+    async function processAndSaveResponse(user, question, answer, timestamp) {
+  // LAZY LOAD: Require the module right before you use it
+  const { saveResponseToSheet } = require('./sheets');
+  await saveResponseToSheet({ user, question, answer, timestamp });
+}
 });
 
 app.action('submit_checkbox_answers', async ({ ack, body, client }) => {
