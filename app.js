@@ -13,7 +13,8 @@ const receiver = new ExpressReceiver({ signingSecret: process.env.SLACK_SIGNING_
 receiver.app.get('/', (req, res) => { res.status(200).send('App is up and running!'); });
 const app = new App({ token: process.env.SLACK_BOT_TOKEN, receiver: receiver });
 
-const generateModalBlocks = (questionCount = 1) => {
+// MODIFIED: Now accepts usergroupOptions to populate the dropdown
+const generateModalBlocks = (questionCount = 1, usergroupOptions = []) => {
     let blocks = [];
     blocks.push({type: 'header',text: {type: 'plain_text',text: 'Survey Introduction (Optional)'}},{type: 'input',block_id: 'intro_message_block',optional: true,label: { type: 'plain_text', text: 'Introductory Message' },element: { type: 'plain_text_input', multiline: true, action_id: 'intro_message_input' }},{type: 'input',block_id: 'image_url_block',optional: true,label: { type: 'plain_text', text: 'Image or GIF URL' },element: { type: 'plain_text_input', action_id: 'image_url_input', placeholder: { type: 'plain_text', text: 'https://example.com/image.gif' } }},{type: 'input',block_id: 'video_url_block',optional: true,label: { type: 'plain_text', text: 'YouTube or Vimeo Video URL' },element: { type: 'plain_text_input', action_id: 'video_url_input', placeholder: { type: 'plain_text', text: 'https://www.youtube.com/watch?v=...' } }});
     for (let i = 1; i <= questionCount; i++) {
@@ -41,10 +42,12 @@ const generateModalBlocks = (questionCount = 1) => {
             block_id: 'usergroups_block',
             optional: true,
             label: { type: 'plain_text', text: '2. Send DM to all members of user group(s)' },
+            // MODIFIED: Changed element type to one supported in modals
             element: {
-                type: 'multi_usergroups_select',
+                type: 'multi_static_select',
                 placeholder: { type: 'plain_text', text: 'Select user groups...' },
-                action_id: 'usergroups_select'
+                action_id: 'usergroups_select',
+                options: usergroupOptions // Dynamically populated
             }
         },
         {
@@ -62,33 +65,64 @@ const generateModalBlocks = (questionCount = 1) => {
     return blocks;
 };
 
+// MODIFIED: Now fetches user groups before opening the view
 app.command('/ask', async ({ ack, body, client }) => {
     await ack();
     try {
-      await client.views.open({
-        trigger_id: body.trigger_id,
-        view: {type: 'modal',callback_id: 'poll_submission',title: { type: 'plain_text', text: 'Create a New Survey' },submit: { type: 'plain_text', text: 'Send Survey' },blocks: generateModalBlocks(1)}
-      });
+        const usergroupsResult = await client.usergroups.list();
+        const usergroupOptions = usergroupsResult.usergroups
+            .filter(g => !g.delete_time) // Filter out deleted groups
+            .map(group => ({
+                text: { type: 'plain_text', text: group.name },
+                value: group.id
+            }));
+
+        await client.views.open({
+            trigger_id: body.trigger_id,
+            view: {
+                type: 'modal',
+                callback_id: 'poll_submission',
+                title: { type: 'plain_text', text: 'Create a New Survey' },
+                submit: { type: 'plain_text', text: 'Send Survey' },
+                blocks: generateModalBlocks(1, usergroupOptions)
+            }
+        });
     } catch (error) {
       console.error(error);
     }
 });
 
+// MODIFIED: Also fetches user groups when updating the view
 app.action('add_question_button', async ({ ack, body, client, action }) => {
     await ack();
     const currentQuestionCount = parseInt(action.value, 10);
     const newQuestionCount = currentQuestionCount + 1;
     try {
-      await client.views.update({
-        view_id: body.view.id,
-        hash: body.view.hash,
-        view: {type: 'modal',callback_id: 'poll_submission',title: { type: 'plain_text', text: 'Create a New Survey' },submit: { type: 'plain_text', text: 'Send Survey' },blocks: generateModalBlocks(newQuestionCount)}
-      });
+        const usergroupsResult = await client.usergroups.list();
+        const usergroupOptions = usergroupsResult.usergroups
+            .filter(g => !g.delete_time)
+            .map(group => ({
+                text: { type: 'plain_text', text: group.name },
+                value: group.id
+            }));
+
+        await client.views.update({
+            view_id: body.view.id,
+            hash: body.view.hash,
+            view: {
+                type: 'modal',
+                callback_id: 'poll_submission',
+                title: { type: 'plain_text', text: 'Create a New Survey' },
+                submit: { type: 'plain_text', text: 'Send Survey' },
+                blocks: generateModalBlocks(newQuestionCount, usergroupOptions)
+            }
+        });
     } catch (error) {
       console.error("Failed to update view:", error);
     }
 });
 
+// MODIFIED: Adjusted to read from the new multi_static_select element
 app.view('poll_submission', async ({ ack, body, view, client }) => {
     await ack();
     const values = view.state.values;
@@ -116,7 +150,11 @@ app.view('poll_submission', async ({ ack, body, view, client }) => {
     const finalConversationIds = new Set();
     const directSelections = values.destinations_block?.destinations_select?.selected_conversations || [];
     directSelections.forEach(id => finalConversationIds.add(id));
-    const selectedGroupIds = values.usergroups_block?.usergroups_select?.selected_usergroups || [];
+    
+    // MODIFIED: Read the selected options from the static select
+    const selectedGroupOptions = values.usergroups_block?.usergroups_select?.selected_options || [];
+    const selectedGroupIds = selectedGroupOptions.map(option => option.value);
+
     if (selectedGroupIds.length > 0) {
         const memberIdPromises = selectedGroupIds.map(groupId =>
             client.usergroups.users.list({ usergroup: groupId })
@@ -212,6 +250,8 @@ app.view('poll_submission', async ({ ack, body, view, client }) => {
     }
 });
 
+// The rest of the action handlers remain unchanged
+// ...
 app.action(/^poll_response_.+$/, async ({ ack, body, client, action }) => {
     await ack();
     if (action.type !== 'button' && action.type !== 'static_select') return;
@@ -262,7 +302,6 @@ app.action(/^poll_response_.+$/, async ({ ack, body, client, action }) => {
         processingRequests.delete(lockKey);
     }
 });
-
 app.action('submit_checkbox_answers', async ({ ack, body, client, action }) => {
     await ack();
     const { sheetName } = JSON.parse(action.value);
@@ -331,7 +370,6 @@ app.action('submit_checkbox_answers', async ({ ack, body, client, action }) => {
         processingRequests.delete(lockKey);
     }
 });
-
 app.view('other_option_submission', async ({ ack, body, view, client }) => {
     const metadata = JSON.parse(view.private_metadata);
     const { sheetName, question, channel_id, message_ts, response_block_id, normal_answers } = metadata;
@@ -370,6 +408,7 @@ app.view('other_option_submission', async ({ ack, body, view, client }) => {
         await client.chat.postEphemeral({channel: channel_id,user: body.user.id,text: `✅ Thank you! For "*${question}*", we've recorded your answer(s): ${confirmationText}`});
     }
 });
+
 
 (async () => {
   await app.start(process.env.PORT || 3000);
