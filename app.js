@@ -13,7 +13,6 @@ const receiver = new ExpressReceiver({ signingSecret: process.env.SLACK_SIGNING_
 receiver.app.get('/', (req, res) => { res.status(200).send('App is up and running!'); });
 const app = new App({ token: process.env.SLACK_BOT_TOKEN, receiver: receiver });
 
-// ... generateModalBlocks, /ask, add_question_button are unchanged from the previous version ...
 const generateModalBlocks = (questionCount = 1) => {
     let blocks = [];
     blocks.push({type: 'header',text: {type: 'plain_text',text: 'Survey Introduction (Optional)'}},{type: 'input',block_id: 'intro_message_block',optional: true,label: { type: 'plain_text', text: 'Introductory Message' },element: { type: 'plain_text_input', multiline: true, action_id: 'intro_message_input' }},{type: 'input',block_id: 'image_url_block',optional: true,label: { type: 'plain_text', text: 'Image or GIF URL' },element: { type: 'plain_text_input', action_id: 'image_url_input', placeholder: { type: 'plain_text', text: 'https://example.com/image.gif' } }},{type: 'input',block_id: 'video_url_block',optional: true,label: { type: 'plain_text', text: 'YouTube or Vimeo Video URL' },element: { type: 'plain_text_input', action_id: 'video_url_input', placeholder: { type: 'plain_text', text: 'https://www.youtube.com/watch?v=...' } }});
@@ -21,9 +20,48 @@ const generateModalBlocks = (questionCount = 1) => {
         blocks.push({ type: 'divider' },{ type: 'header', text: { type: 'plain_text', text: `Question ${i}` } },{ type: 'input', optional: true, block_id: `question_block_${i}`, label: { type: 'plain_text', text: 'Poll Question' }, element: { type: 'plain_text_input', action_id: `question_input_${i}` } },{ type: 'input', optional: true, block_id: `options_block_${i}`, label: { type: 'plain_text', text: 'Answer Options (one per line)' }, element: { type: 'plain_text_input', multiline: true, action_id: `options_input_${i}` } },{ type: 'input', block_id: `format_block_${i}`, label: { type: 'plain_text', text: 'Poll Format' }, element: { type: 'static_select', action_id: `format_select_${i}`, initial_option: { text: { type: 'plain_text', text: 'Buttons' }, value: 'buttons' }, options: [ { text: { type: 'plain_text', text: 'Buttons' }, value: 'buttons' }, { text: { type: 'plain_text', text: 'Dropdown Menu' }, value: 'dropdown' }, { text: { type: 'plain_text', text: 'Checkboxes (Multiple Answers)' }, value: 'checkboxes' } ] } });
     }
     blocks.push({ type: 'divider' },{ type: 'actions', elements: [ { type: 'button', text: { type: 'plain_text', text: '➕ Add Another Question' }, action_id: 'add_question_button', value: `${questionCount}` } ] });
-    blocks.push({type: 'input',block_id: 'destinations_block',label: { type: 'plain_text', text: 'Send survey to these users or channels' },element: {type: 'multi_conversations_select',placeholder: { type: 'plain_text', text: 'Select users and/or channels' },action_id: 'destinations_select',filter: {include: ["public", "private", "im"],exclude_bot_users: true},default_to_current_conversation: true}});
+    
+    blocks.push(
+        { type: 'divider' },
+        { type: 'header', text: { type: 'plain_text', text: '📬 Choose Your Audience' } },
+        {
+            type: 'input',
+            block_id: 'destinations_block',
+            optional: true,
+            label: { type: 'plain_text', text: '1. Send to specific channels or people' },
+            element: {
+                type: 'multi_conversations_select',
+                placeholder: { type: 'plain_text', text: 'Select channels or users...' },
+                action_id: 'destinations_select',
+                filter: { include: ["public", "private", "im"], exclude_bot_users: true },
+            }
+        },
+        {
+            type: 'input',
+            block_id: 'usergroups_block',
+            optional: true,
+            label: { type: 'plain_text', text: '2. Send DM to all members of user group(s)' },
+            element: {
+                type: 'multi_usergroups_select',
+                placeholder: { type: 'plain_text', text: 'Select user groups...' },
+                action_id: 'usergroups_select'
+            }
+        },
+        {
+            type: 'input',
+            block_id: 'exclusions_block',
+            optional: true,
+            label: { type: 'plain_text', text: '3. Exclude these people from the group DMs' },
+            element: {
+                type: 'multi_users_select',
+                placeholder: { type: 'plain_text', text: 'Select users to exclude...' },
+                action_id: 'exclusions_select'
+            }
+        }
+    );
     return blocks;
 };
+
 app.command('/ask', async ({ ack, body, client }) => {
     await ack();
     try {
@@ -35,6 +73,7 @@ app.command('/ask', async ({ ack, body, client }) => {
       console.error(error);
     }
 });
+
 app.action('add_question_button', async ({ ack, body, client, action }) => {
     await ack();
     const currentQuestionCount = parseInt(action.value, 10);
@@ -50,15 +89,11 @@ app.action('add_question_button', async ({ ack, body, client, action }) => {
     }
 });
 
-
-// MODIFIED: This view now handles cases with and without questions separately.
 app.view('poll_submission', async ({ ack, body, view, client }) => {
     await ack();
     const values = view.state.values;
     const user = body.user.id;
 
-    // --- Common logic for both cases ---
-    // Parse questions from the modal
     const parsedQuestions = [];
     const questionKeys = Object.keys(values).filter(key => key.startsWith('question_block_'));
     for (const qKey of questionKeys) {
@@ -70,8 +105,6 @@ app.view('poll_submission', async ({ ack, body, view, client }) => {
             parsedQuestions.push({ questionText, options: optionsText.split('\n').filter(opt => opt.trim() !== ''), pollFormat });
         }
     }
-
-    // Build the introductory part of the message
     let allBlocks = [];
     const introMessage = values.intro_message_block?.intro_message_input?.value;
     const imageUrl = values.image_url_block?.image_url_input?.value;
@@ -79,14 +112,37 @@ app.view('poll_submission', async ({ ack, body, view, client }) => {
     if (introMessage) { allBlocks.push({ type: 'section', text: { type: 'mrkdwn', text: introMessage } }); }
     if (imageUrl) { allBlocks.push({ type: 'image', image_url: imageUrl, alt_text: 'Survey introduction image' }); }
     if (videoUrl) { allBlocks.push({ type: 'section', text: { type: 'mrkdwn', text: `▶️ <${videoUrl}>` } }); }
-    // --- End of Common logic ---
 
+    const finalConversationIds = new Set();
+    const directSelections = values.destinations_block?.destinations_select?.selected_conversations || [];
+    directSelections.forEach(id => finalConversationIds.add(id));
+    const selectedGroupIds = values.usergroups_block?.usergroups_select?.selected_usergroups || [];
+    if (selectedGroupIds.length > 0) {
+        const memberIdPromises = selectedGroupIds.map(groupId =>
+            client.usergroups.users.list({ usergroup: groupId })
+        );
+        const groupMemberResults = await Promise.all(memberIdPromises);
+        groupMemberResults.forEach(result => {
+            if (result.ok) {
+                result.users.forEach(userId => finalConversationIds.add(userId));
+            } else {
+                console.error('Failed to get members for user group:', result.error);
+            }
+        });
+    }
+    const excludedUserIds = values.exclusions_block?.exclusions_select?.selected_users || [];
+    excludedUserIds.forEach(id => finalConversationIds.delete(id));
+    
+    if (finalConversationIds.size === 0) {
+        await client.chat.postEphemeral({
+            user: user,
+            channel: user,
+            text: "Your survey wasn't sent because no recipients were found after applying your group and exclusion filters."
+        });
+        return;
+    }
 
-    // --- Logic Branching: With or Without Questions ---
     if (parsedQuestions.length === 0) {
-        // CASE 1: No questions (send a message-only "survey")
-        
-        // Check if there's any content to send at all
         if (allBlocks.length === 0) {
             await client.chat.postEphemeral({
                 user: user,
@@ -97,28 +153,16 @@ app.view('poll_submission', async ({ ack, body, view, client }) => {
         }
         
         const fallbackText = introMessage ? `You have a new message: ${introMessage.substring(0, 50)}...` : 'You have a new message!';
-        const conversationIds = values.destinations_block.destinations_select.selected_conversations;
-
-        for (const conversationId of conversationIds) {
+        for (const conversationId of finalConversationIds) {
             try {
-                if (conversationId.startsWith('C')) {
-                    await client.conversations.join({ channel: conversationId });
-                }
-                await client.chat.postMessage({
-                    channel: conversationId,
-                    text: fallbackText,
-                    blocks: allBlocks,
-                    unfurl_links: true,
-                    unfurl_media: true
-                });
+                if (conversationId.startsWith('C')) { await client.conversations.join({ channel: conversationId }); }
+                await client.chat.postMessage({ channel: conversationId, text: fallbackText, blocks: allBlocks, unfurl_links: true, unfurl_media: true });
             } catch (error) {
                 console.error(`Failed to send message-only survey to ${conversationId}`, error);
             }
         }
-    } else {
-        // CASE 2: There are questions (original survey logic)
 
-        // Create the Google Sheet for responses
+    } else {
         const userInfo = await client.users.info({ user: body.user.id });
         const creatorName = userInfo.user.profile.real_name || userInfo.user.name;
         const questionTexts = parsedQuestions.map(q => q.questionText);
@@ -131,12 +175,8 @@ app.view('poll_submission', async ({ ack, body, view, client }) => {
             return;
         }
 
-        // Add a divider if there was an intro section
-        if (allBlocks.length > 0) {
-            allBlocks.push({ type: 'divider' });
-        }
+        if (allBlocks.length > 0) { allBlocks.push({ type: 'divider' }); }
 
-        // Add the question blocks to the message
         for (const [questionIndex, questionData] of parsedQuestions.entries()) {
             allBlocks.push({ type: 'header', text: { type: 'plain_text', text: questionData.questionText } });
             let responseBlock;
@@ -157,18 +197,13 @@ app.view('poll_submission', async ({ ack, body, view, client }) => {
             }
             allBlocks.push(responseBlock);
         }
-
         if (parsedQuestions.some(q => q.pollFormat === 'checkboxes')) {
             allBlocks.push({ type: 'divider' }, { type: 'actions', elements: [{ type: 'button', text: { type: 'plain_text', text: 'Submit All My Answers' }, style: 'primary', action_id: `submit_checkbox_answers`, value: JSON.stringify({ sheetName }) }] });
         }
 
-        // Send the full survey message
-        const conversationIds = values.destinations_block.destinations_select.selected_conversations;
-        for (const conversationId of conversationIds) {
+        for (const conversationId of finalConversationIds) {
             try {
-                if (conversationId.startsWith('C')) {
-                    await client.conversations.join({ channel: conversationId });
-                }
+                if (conversationId.startsWith('C')) { await client.conversations.join({ channel: conversationId }); }
                 await client.chat.postMessage({channel: conversationId,text: 'You have a new survey to complete!',blocks: allBlocks,unfurl_links: true,unfurl_media: true});
             } catch (error) {
                 console.error(`Failed to send survey to ${conversationId}`, error);
@@ -177,9 +212,6 @@ app.view('poll_submission', async ({ ack, body, view, client }) => {
     }
 });
 
-
-// All other action handlers (poll_response, submit_checkbox_answers, other_option_submission) are unchanged
-// ...
 app.action(/^poll_response_.+$/, async ({ ack, body, client, action }) => {
     await ack();
     if (action.type !== 'button' && action.type !== 'static_select') return;
@@ -230,6 +262,7 @@ app.action(/^poll_response_.+$/, async ({ ack, body, client, action }) => {
         processingRequests.delete(lockKey);
     }
 });
+
 app.action('submit_checkbox_answers', async ({ ack, body, client, action }) => {
     await ack();
     const { sheetName } = JSON.parse(action.value);
@@ -298,6 +331,7 @@ app.action('submit_checkbox_answers', async ({ ack, body, client, action }) => {
         processingRequests.delete(lockKey);
     }
 });
+
 app.view('other_option_submission', async ({ ack, body, view, client }) => {
     const metadata = JSON.parse(view.private_metadata);
     const { sheetName, question, channel_id, message_ts, response_block_id, normal_answers } = metadata;
@@ -336,7 +370,6 @@ app.view('other_option_submission', async ({ ack, body, view, client }) => {
         await client.chat.postEphemeral({channel: channel_id,user: body.user.id,text: `✅ Thank you! For "*${question}*", we've recorded your answer(s): ${confirmationText}`});
     }
 });
-// ...
 
 (async () => {
   await app.start(process.env.PORT || 3000);
