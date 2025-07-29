@@ -140,86 +140,98 @@ app.action('add_question_button', async ({ ack, body, client, action }) => {
 });
 
 // This listener handles the submission of the modal form
-// This listener handles the submission of the modal form
 app.view('poll_submission', async ({ ack, body, view, client }) => {
+    // Acknowledge the submission immediately to prevent a timeout error in Slack.
     await ack();
-    const values = view.state.values;
-    const conversationIds = values.destinations_block.destinations_select.selected_conversations;
-    let allBlocks = [];
-    const introMessage = values.intro_message_block?.intro_message_input?.value;
-    const imageUrl = values.image_url_block?.image_url_input?.value;
-    const videoUrl = values.video_url_block?.video_url_input?.value;
 
-    if (introMessage) { allBlocks.push({ type: 'section', text: { type: 'mrkdwn', text: introMessage } }); }
-    if (imageUrl) { allBlocks.push({ type: 'image', image_url: imageUrl, alt_text: 'Survey introduction image' }); }
-    if (videoUrl) { allBlocks.push({ type: 'section', text: { type: 'mrkdwn', text: `▶️ <${videoUrl}>` } }); }
-    if (allBlocks.length > 0) { allBlocks.push({ type: 'divider' }); }
+    try {
+        const values = view.state.values;
 
-    const parsedQuestions = [];
-    const questionKeys = Object.keys(values).filter(key => key.startsWith('question_block_'));
-    for (const qKey of questionKeys) {
-        const qIndex = qKey.split('_')[2];
-        const questionText = values[qKey][`question_input_${qIndex}`].value;
-        const optionsText = values[`options_block_${qIndex}`][`options_input_${qIndex}`].value;
-        const pollFormat = values[`format_block_${qIndex}`][`format_select_${qIndex}`].selected_option.value;
-        if (questionText && optionsText) {
-            parsedQuestions.push({ questionText, options: optionsText.split('\n').filter(opt => opt.trim() !== ''), pollFormat });
+        // FIX: Safely access selected conversations to prevent a crash if none are selected.
+        const conversationIds = values.destinations_block?.destinations_select?.selected_conversations || [];
+
+        if (conversationIds.length === 0) {
+            console.log("Survey submission stopped: No destination channel or user was selected.");
+            // You could also send an error message back to the user here.
+            return;
         }
-    }
+        
+        let allBlocks = [];
+        const introMessage = values.intro_message_block?.intro_message_input?.value;
+        const imageUrl = values.image_url_block?.image_url_input?.value;
+        const videoUrl = values.video_url_block?.video_url_input?.value;
 
-    // Build the message blocks
-    for (const [questionIndex, questionData] of parsedQuestions.entries()) {
-        allBlocks.push({ type: 'header', text: { type: 'plain_text', text: questionData.questionText } });
-        let responseBlock;
-        const baseActionId = `poll_response_${Date.now()}_q${questionIndex}`;
-        switch (questionData.pollFormat) {
-            case 'dropdown':
-                responseBlock = { type: 'actions', elements: [{ type: 'static_select', placeholder: { type: 'plain_text', text: 'Choose an answer' }, action_id: baseActionId, options: questionData.options.map(label => ({ text: { type: 'plain_text', text: label }, value: JSON.stringify({ label, question: questionData.questionText }) })) }] };
-                break;
-            case 'checkboxes':
-                responseBlock = { type: 'actions', elements: [{ type: 'checkboxes', action_id: baseActionId, options: questionData.options.map(label => ({ text: { type: 'mrkdwn', text: label }, value: JSON.stringify({ label, question: questionData.questionText }) })) }] };
-                break;
-            case 'buttons':
-            default:
-                responseBlock = { type: 'actions', elements: questionData.options.map((label, optionIndex) => ({ type: 'button', text: { type: 'plain_text', text: label }, value: JSON.stringify({ label, question: questionData.questionText }), action_id: `${baseActionId}_btn${optionIndex}` })) };
-                break;
-        }
-        allBlocks.push(responseBlock);
-    }
+        if (introMessage) { allBlocks.push({ type: 'section', text: { type: 'mrkdwn', text: introMessage } }); }
+        if (imageUrl) { allBlocks.push({ type: 'image', image_url: imageUrl, alt_text: 'Survey introduction image' }); }
+        if (videoUrl) { allBlocks.push({ type: 'section', text: { type: 'mrkdwn', text: `▶️ <${videoUrl}>` } }); }
+        if (allBlocks.length > 0) { allBlocks.push({ type: 'divider' }); }
 
-    if (parsedQuestions.some(q => q.pollFormat === 'checkboxes')) {
-        allBlocks.push({ type: 'divider' }, { type: 'actions', elements: [{ type: 'button', text: { type: 'plain_text', text: 'Submit All My Answers' }, style: 'primary', action_id: 'submit_checkbox_answers' }] });
-    }
-
-    // Loop through destinations and send the message
-    for (const conversationId of conversationIds) {
-        try {
-            await client.chat.postMessage({
-                channel: conversationId,
-                text: 'You have a new survey to complete!',
-                blocks: allBlocks,
-                unfurl_links: true,
-                unfurl_media: true
-            });
-            if (conversationId.startsWith('C')) {
-                await client.conversations.join({ channel: conversationId });
+        const parsedQuestions = [];
+        const questionKeys = Object.keys(values).filter(key => key.startsWith('question_block_'));
+        for (const qKey of questionKeys) {
+            const qIndex = qKey.split('_')[2];
+            const questionText = values[qKey][`question_input_${qIndex}`].value;
+            const optionsText = values[`options_block_${qIndex}`][`options_input_${qIndex}`].value;
+            const pollFormat = values[`format_block_${qIndex}`][`format_select_${qIndex}`].selected_option.value;
+            if (questionText && optionsText) {
+                parsedQuestions.push({ questionText, options: optionsText.split('\n').filter(opt => opt.trim() !== ''), pollFormat });
             }
-        } catch (error) {
-            console.error(`Failed to send survey to ${conversationId}:`, error);
+        }
 
-            // Enhanced error feedback DM to the user who submitted the form
+        // Build the message blocks
+        for (const [questionIndex, questionData] of parsedQuestions.entries()) {
+            allBlocks.push({ type: 'header', text: { type: 'plain_text', text: questionData.questionText } });
+            let responseBlock;
+            const baseActionId = `poll_response_${Date.now()}_q${questionIndex}`;
+            switch (questionData.pollFormat) {
+                case 'dropdown':
+                    responseBlock = { type: 'actions', elements: [{ type: 'static_select', placeholder: { type: 'plain_text', text: 'Choose an answer' }, action_id: baseActionId, options: questionData.options.map(label => ({ text: { type: 'plain_text', text: label }, value: JSON.stringify({ label, question: questionData.questionText }) })) }] };
+                    break;
+                case 'checkboxes':
+                    responseBlock = { type: 'actions', elements: [{ type: 'checkboxes', action_id: baseActionId, options: questionData.options.map(label => ({ text: { type: 'mrkdwn', text: label }, value: JSON.stringify({ label, question: questionData.questionText }) })) }] };
+                    break;
+                case 'buttons':
+                default:
+                    responseBlock = { type: 'actions', elements: questionData.options.map((label, optionIndex) => ({ type: 'button', text: { type: 'plain_text', text: label }, value: JSON.stringify({ label, question: questionData.questionText }), action_id: `${baseActionId}_btn${optionIndex}` })) };
+                    break;
+            }
+            allBlocks.push(responseBlock);
+        }
+
+        if (parsedQuestions.some(q => q.pollFormat === 'checkboxes')) {
+            allBlocks.push({ type: 'divider' }, { type: 'actions', elements: [{ type: 'button', text: { type: 'plain_text', text: 'Submit All My Answers' }, style: 'primary', action_id: 'submit_checkbox_answers' }] });
+        }
+
+        // Loop through destinations and send the message
+        for (const conversationId of conversationIds) {
             try {
                 await client.chat.postMessage({
-                    channel: body.user.id,
-                    text: `I'm sorry, I ran into an error when trying to send the survey to <#${conversationId}>. Please check the server logs for details.\n\n*Error:* \`${error.data?.error || 'Unknown error'}\``
+                    channel: conversationId,
+                    text: 'You have a new survey to complete!',
+                    blocks: allBlocks,
+                    unfurl_links: true,
+                    unfurl_media: true
                 });
-            } catch (dmError) {
-                console.error('Failed to send the error DM to the user:', dmError);
+                if (conversationId.startsWith('C')) {
+                    await client.conversations.join({ channel: conversationId });
+                }
+            } catch (error) {
+                console.error(`Failed to send survey to ${conversationId}:`, error);
+                // Enhanced error feedback DM to the user who submitted the form
+                try {
+                    await client.chat.postMessage({
+                        channel: body.user.id,
+                        text: `I'm sorry, I ran into an error when trying to send the survey to <#${conversationId}>. Please check the server logs for details.\n\n*Error:* \`${error.data?.error || 'Unknown error'}\``
+                    });
+                } catch (dmError) {
+                    console.error('Failed to send the error DM to the user:', dmError);
+                }
             }
         }
+    } catch (e) {
+        console.error("A critical error occurred in the poll_submission view handler:", e);
     }
 });
-
 // Listener for buttons and dropdowns with "Other" logic
 app.action(/^poll_response_.+$/, async ({ ack, body, client, action }) => {
     await ack();
