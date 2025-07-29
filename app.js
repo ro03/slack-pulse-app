@@ -227,7 +227,12 @@ app.action(/^poll_response_.+$/, async ({ ack, body, client, action }) => {
                 const confirmationBlock = { type: 'context', elements: [{ type: 'mrkdwn', text: `✅ *${headerBlock.text.text}* — You answered: *${label}*` }] };
                 originalBlocks.splice(blockIndexToReplace - 1, 2, confirmationBlock);
             }
-            await client.chat.update({ channel: channelId, ts: body.message.ts, blocks: originalBlocks });
+            await client.chat.update({
+    channel: channelId,
+    ts: body.message.ts,
+    text: "Your response has been recorded.", // Add this line
+    blocks: originalBlocks
+});
         } else {
             await client.chat.postEphemeral({ channel: channelId, user: body.user.id, text: `✅ Thank you for your response to "*${question}*". We've recorded your answer: *${label}*` });
         }
@@ -284,7 +289,12 @@ app.action('submit_checkbox_answers', async ({ ack, body, client, action }) => {
             }
             const submitButtonIndex = originalBlocks.findIndex(b => b.type === 'actions' && b.elements[0]?.action_id === 'submit_checkbox_answers');
             if (submitButtonIndex > -1) { originalBlocks.splice(submitButtonIndex - 1, 2); }
-            await client.chat.update({ channel: channelId, ts: body.message.ts, blocks: originalBlocks });
+            await client.chat.update({
+    channel: channelId,
+    ts: body.message.ts,
+    text: "Your responses have been recorded.", // Add this line
+    blocks: originalBlocks
+});
         } else {
             const confirmationText = `For "*${questionText}*", you selected: *${confirmationLabels}*`;
             await client.chat.postEphemeral({ channel: channelId, user: body.user.id, text: `✅ Thank you! Your survey responses have been submitted.\n${confirmationText}` });
