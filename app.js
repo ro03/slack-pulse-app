@@ -14,9 +14,44 @@ if (process.env.NODE_ENV !== 'production') {
     require('dotenv').config();
 }
 
+// --- NEW & REORDERED INITIALIZATION ---
+
+// 1. Initialize the receiver
 const receiver = new ExpressReceiver({ signingSecret: process.env.SLACK_SIGNING_SECRET });
-receiver.app.get('/', (req, res) => { res.status(200).send('App is up and running!'); });
+
+// 2. Initialize the Bolt App, passing in the receiver
 const app = new App({ token: process.env.SLACK_BOT_TOKEN, receiver: receiver });
+
+// 3. Define the health check route on the receiver
+receiver.app.get('/', (req, res) => {
+    res.status(200).send('App is up and running!');
+});
+
+// 4. Define the OAuth callback route on the receiver
+receiver.app.get('/api/slack/callback', async (req, res) => {
+    try {
+        // Exchange the temporary authorization code for an access token
+        const response = await app.client.oauth.v2.access({
+            client_id: process.env.SLACK_CLIENT_ID,
+            client_secret: process.env.SLACK_CLIENT_SECRET,
+            code: req.query.code,
+        });
+
+        // TODO: Securely store the access token (response.access_token)
+        // and team information in your database.
+        console.log('OAuth Response:', response);
+
+        // Respond to the user that the installation was successful
+        res.send('Your app has been successfully installed! You can close this window.');
+
+    } catch (error) {
+        console.error('OAuth Error:', error);
+        res.status(500).send('Something went wrong during installation.');
+    }
+});
+
+// --- END OF NEW CODE ---
+
 
 const generateModalBlocks = (questionCount = 1, userGroups = []) => {
     let blocks = [];
