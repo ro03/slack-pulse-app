@@ -2,7 +2,6 @@
 
 const { google } = require('googleapis');
 
-// Check if the required environment variables are set.
 if (!process.env.GOOGLE_CREDENTIALS_JSON) {
   throw new Error('The GOOGLE_CREDENTIALS_JSON environment variable is not set.');
 }
@@ -17,116 +16,187 @@ const auth = new google.auth.GoogleAuth({
 });
 const spreadsheetId = process.env.GOOGLE_SHEET_ID;
 
+// Helper to convert a 0-indexed column number to an A1-style letter (e.g., 0 -> A, 1 -> B)
+function colToA1(colIndex) {
+  let col = "";
+  let temp;
+  let letter = colIndex;
+  while (letter >= 0) {
+    temp = letter % 26;
+    col = String.fromCharCode(temp + 65) + col;
+    letter = Math.floor(letter / 26) - 1;
+  }
+  return col;
+}
+
 /**
- * NEW FUNCTION
- * Creates a new sheet (tab) in the spreadsheet and adds headers.
+ * NEW (REWRITTEN)
+ * Creates a new sheet, adds creator info, and sets headers based on survey questions.
  * @param {string} sheetName - The desired name for the new sheet.
+ * @param {string} creatorName - The Slack name of the user who created the survey.
+ * @param {string[]} questionTexts - An array of the survey question strings.
  * @returns {boolean} - True if successful, false otherwise.
  */
-async function createNewSheet(sheetName) {
+async function createNewSheet(sheetName, creatorName, questionTexts) {
     try {
         const authClient = await auth.getClient();
         const sheets = google.sheets({ version: 'v4', auth: authClient });
 
-        // Request to create a new sheet
-        const addSheetRequest = {
-            requests: [
-                {
-                    addSheet: {
-                        properties: {
-                            title: sheetName,
-                        },
-                    },
-                },
-            ],
-        };
-
         await sheets.spreadsheets.batchUpdate({
             spreadsheetId,
-            resource: addSheetRequest,
+            resource: { requests: [{ addSheet: { properties: { title: sheetName } } }] },
         });
 
-        // Add headers to the new sheet
-        const headers = [['User Name', 'Question', 'Answer', 'Timestamp']];
+        const creatorRow = [['Survey Creator:', creatorName]];
         await sheets.spreadsheets.values.update({
             spreadsheetId,
-            range: `${sheetName}!A1`, // Start at cell A1 of the new sheet
+            range: `${sheetName}!A1`,
             valueInputOption: 'USER_ENTERED',
-            resource: {
-                values: headers,
-            },
+            resource: { values: creatorRow },
+        });
+
+        const headers = [['User Name', 'Timestamp', ...questionTexts]];
+        await sheets.spreadsheets.values.update({
+            spreadsheetId,
+            range: `${sheetName}!A2`,
+            valueInputOption: 'USER_ENTERED',
+            resource: { values: headers },
         });
 
         console.log(`Successfully created new sheet: "${sheetName}"`);
         return true;
     } catch (error) {
-        console.error(`Error creating new sheet:`, error);
+        console.error(`Error creating new sheet:`, error.response ? error.response.data : error.message);
         return false;
     }
 }
 
 /**
- * MODIFIED
- * Appends a new response row to a specific sheet.
+ * NEW (REWRITTEN)
+ * Saves or updates a user's response. Finds the user's row and the question's column,
+ * then updates the specific cell. If the user is new, it appends a new row.
  * @param {object} responseData - The data to save.
- * @param {string} responseData.sheetName - The name of the sheet to write to.
  */
-async function saveResponseToSheet({ sheetName, user, question, answer, timestamp }) {
-  try {
-    const authClient = await auth.getClient();
-    const sheets = google.sheets({ version: 'v4', auth: authClient });
-    const row = [[user, question, answer, timestamp]];
+async function saveOrUpdateResponse({ sheetName, user, question, answer, timestamp }) {
+    try {
+        const authClient = await auth.getClient();
+        const sheets = google.sheets({ version: 'v4', auth: authClient });
 
-    await sheets.spreadsheets.values.append({
-      spreadsheetId: spreadsheetId,
-      range: `${sheetName}!A1`, // MODIFIED: Appends to the specified sheet
-      valueInputOption: 'USER_ENTERED',
-      resource: {
-        values: row,
-      },
-    });
-    console.log(`Successfully saved response to sheet: "${sheetName}"`);
-  } catch (error) {
-    console.error('Error saving to Google Sheet:', error);
-  }
+        // 1. Get headers to find the question column
+        const headerRes = await sheets.spreadsheets.values.get({
+            spreadsheetId,
+            range: `${sheetName}!2:2`, // Headers are on row 2
+        });
+        const headers = headerRes.data.values ? headerRes.data.values[0] : [];
+        const questionColIndex = headers.indexOf(question);
+        if (questionColIndex === -1) {
+            console.error(`Could not find question column for "${question}" in sheet "${sheetName}"`);
+            return;
+        }
+
+        // 2. Get user column to find the user's row
+        const userColRes = await sheets.spreadsheets.values.get({
+            spreadsheetId,
+            range: `${sheetName}!A3:A`, // User data starts at row 3
+        });
+        const userColumn = userColRes.data.values ? userColRes.data.values.flat() : [];
+        const userRowIndex = userColumn.indexOf(user); // 0-indexed position in the A3:A range
+
+        if (userRowIndex !== -1) {
+            // 3a. User exists, update their row
+            const sheetRow = userRowIndex + 3; // +3 to convert to actual sheet row number (1-based, starts at A3)
+            const questionColLetter = colToA1(questionColIndex);
+            
+            // Update the answer cell
+            await sheets.spreadsheets.values.update({
+                spreadsheetId,
+                range: `${sheetName}!${questionColLetter}${sheetRow}`,
+                valueInputOption: 'USER_ENTERED',
+                resource: { values: [[answer]] },
+            });
+            // Update the timestamp in column B
+            await sheets.spreadsheets.values.update({
+                spreadsheetId,
+                range: `${sheetName}!B${sheetRow}`,
+                valueInputOption: 'USER_ENTERED',
+                resource: { values: [[timestamp]] },
+            });
+
+        } else {
+            // 3b. New user, append a new row
+            const numQuestions = headers.length - 2; // Subtract 'User Name' and 'Timestamp'
+            const newRow = Array(numQuestions).fill('');
+            newRow[questionColIndex - 2] = answer; // -2 to adjust for User/Timestamp cols
+
+            await sheets.spreadsheets.values.append({
+                spreadsheetId,
+                range: `${sheetName}!A1`,
+                valueInputOption: 'USER_ENTERED',
+                resource: { values: [[user, timestamp, ...newRow]] },
+            });
+        }
+        console.log(`Successfully saved/updated response for "${user}" in sheet "${sheetName}"`);
+    } catch (error) {
+        console.error('Error saving to Google Sheet:', error.response ? error.response.data : error.message);
+    }
 }
+
 
 /**
- * MODIFIED
- * Checks a specific sheet to see if a user has already answered a question.
- * @param {object} checkData - The data to check for duplicates.
- * @param {string} checkData.sheetName - The name of the sheet to check.
+ * NEW (REWRITTEN)
+ * Checks if a user has already answered a specific question by checking if the
+ * corresponding cell in their row is filled.
+ * @param {object} checkData - The data to check.
  */
 async function checkIfAnswered({ sheetName, user, question }) {
-  try {
-    const authClient = await auth.getClient();
-    const sheets = google.sheets({ version: 'v4', auth: authClient });
+    try {
+        const authClient = await auth.getClient();
+        const sheets = google.sheets({ version: 'v4', auth: authClient });
 
-    const response = await sheets.spreadsheets.values.get({
-      spreadsheetId: spreadsheetId,
-      range: `${sheetName}!A:B`, // MODIFIED: Reads from the specified sheet
-    });
+        const headerRes = await sheets.spreadsheets.values.get({
+            spreadsheetId,
+            range: `${sheetName}!2:2`,
+        });
+        const headers = headerRes.data.values ? headerRes.data.values[0] : [];
+        const questionColIndex = headers.indexOf(question);
+        if (questionColIndex === -1) return false;
 
-    const rows = response.data.values;
-    if (rows) {
-      const found = rows.some(row => row[0] === user && row[1] === question);
-      
-      if (found) {
-        console.log(`Duplicate answer detected for user "${user}" on question "${question}" in sheet "${sheetName}"`);
-        return true;
-      }
+        const userColRes = await sheets.spreadsheets.values.get({
+            spreadsheetId,
+            range: `${sheetName}!A3:A`,
+        });
+        const userColumn = userColRes.data.values ? userColRes.data.values.flat() : [];
+        const userRowIndex = userColumn.indexOf(user);
+
+        if (userRowIndex === -1) return false; // User hasn't answered anything yet
+
+        const sheetRow = userRowIndex + 3;
+        const questionColLetter = colToA1(questionColIndex);
+
+        const cellRes = await sheets.spreadsheets.values.get({
+            spreadsheetId,
+            range: `${sheetName}!${questionColLetter}${sheetRow}`,
+        });
+
+        // If the cell has any value, they have answered.
+        const hasValue = cellRes.data.values && cellRes.data.values.length > 0 && cellRes.data.values[0][0] !== '';
+        if (hasValue) {
+            console.log(`Duplicate answer detected for user "${user}" on question "${question}" in sheet "${sheetName}"`);
+            return true;
+        }
+
+        return false;
+    } catch (error) {
+        // If the sheet or range doesn't exist yet, it's not an error in this context
+        if (error.code === 400) return false;
+        console.error('Error checking for duplicates:', error.response ? error.response.data : error.message);
+        return false;
     }
-    
-    return false;
-
-  } catch (error) {
-    console.error('Error reading from Google Sheet to check for duplicates:', error);
-    return false;
-  }
 }
 
+
 module.exports = {
-  createNewSheet, // NEW
-  saveResponseToSheet,
+  createNewSheet,
+  saveOrUpdateResponse, // MODIFIED function name
   checkIfAnswered,
 };
