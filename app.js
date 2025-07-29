@@ -8,7 +8,8 @@ const {
     getGroupMembers,
 } = require('./sheets');
 
-const processingRequests = new Set();
+// A temporary in-memory store for checkbox selections before submission.
+const checkboxSelections = {}; // e.g., { 'user_id': { 'sheetName_q_index': ['Answer 1', 'Answer 2'] } }
 
 if (process.env.NODE_ENV !== 'production') {
     require('dotenv').config();
@@ -28,12 +29,11 @@ receiver.app.get('/', (req, res) => {
 // 4. Define the OAuth callback route on the receiver
 receiver.app.get('/api/slack/callback', async (req, res) => {
     try {
-        const response = await app.client.oauth.v2.access({
+        await app.client.oauth.v2.access({
             client_id: process.env.SLACK_CLIENT_ID,
             client_secret: process.env.SLACK_CLIENT_SECRET,
             code: req.query.code,
         });
-        console.log('OAuth Response:', response);
         res.send('Your app has been successfully installed! You can close this window.');
     } catch (error) {
         console.error('OAuth Error:', error);
@@ -50,6 +50,7 @@ const generateModalBlocks = (questionCount = 1, userGroups = []) => {
     blocks.push({ type: 'divider' }, { type: 'actions', elements: [{ type: 'button', text: { type: 'plain_text', text: '➕ Add Another Question' }, action_id: 'add_question_button', value: `${questionCount}` }] });
 
     if (userGroups.length > 0) {
+        blocks.push({ type: 'divider' });
         blocks.push({ type: 'input', block_id: 'group_destination_block', optional: true, label: { type: 'plain_text', text: 'OR... Send to a Saved Group' }, element: { type: 'static_select', action_id: 'group_destination_select', placeholder: { type: 'plain_text', text: 'Select a group' }, options: userGroups.map(group => ({ text: { type: 'plain_text', text: group.GroupName }, value: group.GroupName })) } });
     }
     blocks.push({ type: 'input', block_id: 'destinations_block', optional: true, label: { type: 'plain_text', text: 'Send survey to these users or channels' }, element: { type: 'multi_conversations_select', placeholder: { type: 'plain_text', text: 'Select users and/or channels' }, action_id: 'destinations_select', filter: { include: ["public", "private", "im"], exclude_bot_users: true } } });
@@ -67,25 +68,15 @@ app.command('/ask', async ({ ack, body, client }) => {
         });
     } catch (error) {
         console.error("Failed to open survey modal:", error);
-        await client.chat.postEphemeral({
-            user: body.user_id,
-            channel: body.channel_id,
-            text: "Sorry, there was an error opening the survey creator. Please check the logs."
-        });
     }
 });
 
-// --- CORRECTED ACTION HANDLER ---
 app.action('add_question_button', async ({ ack, body, client, action }) => {
-    await ack(); // 1. Acknowledge immediately
-
+    await ack();
     try {
-        // 2. Now perform the slow operations
         const currentQuestionCount = parseInt(action.value, 10);
         const newQuestionCount = currentQuestionCount + 1;
-        const userGroups = await getAllUserGroups(); // This can be slow
-
-        // 3. Update the view
+        const userGroups = await getAllUserGroups();
         await client.views.update({
             view_id: body.view.id,
             hash: body.view.hash,
@@ -96,11 +87,9 @@ app.action('add_question_button', async ({ ack, body, client, action }) => {
     }
 });
 
-// --- CORRECTED VIEW SUBMISSION HANDLER ---
 app.view('poll_submission', async ({ ack, body, view, client }) => {
-    await ack(); // 1. Acknowledge the submission immediately to close the modal.
+    await ack();
 
-    // 2. Wrap all logic in a try/catch block to handle errors gracefully.
     try {
         const values = view.state.values;
         const user = body.user.id;
@@ -117,11 +106,7 @@ app.view('poll_submission', async ({ ack, body, view, client }) => {
         const conversationIds = Array.from(finalConversationIds);
 
         if (conversationIds.length === 0) {
-            await client.chat.postEphemeral({
-                user: user,
-                channel: user,
-                text: 'Error: Please select at least one destination user/channel or a group.'
-            });
+            await client.chat.postEphemeral({ user: user, channel: user, text: 'Error: Please select at least one destination.' });
             return;
         }
 
@@ -146,73 +131,193 @@ app.view('poll_submission', async ({ ack, body, view, client }) => {
         if (videoUrl) { allBlocks.push({ type: 'section', text: { type: 'mrkdwn', text: `▶️ <${videoUrl}>` } }); }
 
         if (parsedQuestions.length === 0) {
-            if (allBlocks.length === 0) {
-                await client.chat.postEphemeral({ user: user, channel: user, text: "You can't send an empty message. Please add an introductory message or some questions." });
-                return;
-            }
-            const fallbackText = introMessage ? `You have a new message: ${introMessage.substring(0, 50)}...` : 'You have a new message!';
-            for (const conversationId of conversationIds) {
-                if (conversationId.startsWith('C')) { await client.conversations.join({ channel: conversationId }); }
-                await client.chat.postMessage({ channel: conversationId, text: fallbackText, blocks: allBlocks, unfurl_links: true, unfurl_media: true });
-            }
-        } else {
-            const userInfo = await client.users.info({ user: body.user.id });
-            const creatorName = userInfo.user.profile.real_name || userInfo.user.name;
-            const questionTexts = parsedQuestions.map(q => q.questionText);
-            const firstQuestion = parsedQuestions[0].questionText.substring(0, 50).replace(/[/\\?%*:|"<>]/g, '');
-            const sheetName = `Survey - ${firstQuestion} - ${Date.now()}`;
-            const sheetCreated = await createNewSheet(sheetName, creatorName, questionTexts);
-
-            if (!sheetCreated) {
-                await client.chat.postEphemeral({ user, channel: user, text: "There was an error creating a new Google Sheet. Please check the logs." });
-                return;
-            }
-            if (allBlocks.length > 0) { allBlocks.push({ type: 'divider' }); }
-
-            for (const [questionIndex, questionData] of parsedQuestions.entries()) {
-                allBlocks.push({ type: 'header', text: { type: 'plain_text', text: questionData.questionText } });
-                let responseBlock;
-                const baseActionId = `poll_response_${Date.now()}_q${questionIndex}`;
-                const valuePayload = (label) => JSON.stringify({ sheetName, label, question: questionData.questionText });
-
-                switch (questionData.pollFormat) {
-                    case 'dropdown':
-                        responseBlock = { type: 'actions', elements: [{ type: 'static_select', placeholder: { type: 'plain_text', text: 'Choose an answer' }, action_id: baseActionId, options: questionData.options.map(label => ({ text: { type: 'plain_text', text: label }, value: valuePayload(label) })) }] };
-                        break;
-                    case 'checkboxes':
-                        responseBlock = { type: 'actions', elements: [{ type: 'checkboxes', action_id: baseActionId, options: questionData.options.map(label => ({ text: { type: 'mrkdwn', text: label }, value: valuePayload(label) })) }] };
-                        break;
-                    default:
-                        responseBlock = { type: 'actions', elements: questionData.options.map((label, optionIndex) => ({ type: 'button', text: { type: 'plain_text', text: label }, value: valuePayload(label), action_id: `${baseActionId}_btn${optionIndex}` })) };
-                        break;
+            if (allBlocks.length > 0) {
+                 for (const conversationId of conversationIds) {
+                    if (conversationId.startsWith('C')) { await client.conversations.join({ channel: conversationId }); }
+                    await client.chat.postMessage({ channel: conversationId, text: 'You have a new message', blocks: allBlocks, unfurl_links: true, unfurl_media: true });
                 }
-                allBlocks.push(responseBlock);
             }
-            if (parsedQuestions.some(q => q.pollFormat === 'checkboxes')) {
-                allBlocks.push({ type: 'divider' }, { type: 'actions', elements: [{ type: 'button', text: { type: 'plain_text', text: 'Submit All My Answers' }, style: 'primary', action_id: `submit_checkbox_answers`, value: JSON.stringify({ sheetName }) }] });
-            }
-            for (const conversationId of conversationIds) {
-                if (conversationId.startsWith('C')) { await client.conversations.join({ channel: conversationId }); }
-                await client.chat.postMessage({ channel: conversationId, text: 'You have a new survey to complete!', blocks: allBlocks, unfurl_links: true, unfurl_media: true });
-            }
+            return;
         }
 
+        const userInfo = await client.users.info({ user: body.user.id });
+        const creatorName = userInfo.user.profile.real_name || userInfo.user.name;
+        const questionTexts = parsedQuestions.map(q => q.questionText);
+        const firstQuestion = parsedQuestions[0].questionText.substring(0, 50).replace(/[/\\?%*:|"<>]/g, '');
+        const sheetName = `Survey - ${firstQuestion} - ${Date.now()}`;
+        const sheetCreated = await createNewSheet(sheetName, creatorName, questionTexts);
+
+        if (!sheetCreated) {
+            await client.chat.postEphemeral({ user, channel: user, text: "Error creating a new Google Sheet." });
+            return;
+        }
+        if (allBlocks.length > 0) { allBlocks.push({ type: 'divider' }); }
+
+        for (const [questionIndex, questionData] of parsedQuestions.entries()) {
+            allBlocks.push({ type: 'header', text: { type: 'plain_text', text: questionData.questionText } });
+            let responseBlock;
+            const actionIdPrefix = `poll_response_${Date.now()}_q${questionIndex}`;
+            const valuePayload = (label) => JSON.stringify({ sheetName, label, question: questionData.questionText });
+
+            switch (questionData.pollFormat) {
+                case 'dropdown':
+                    responseBlock = { type: 'actions', elements: [{ type: 'static_select', placeholder: { type: 'plain_text', text: 'Choose an answer' }, action_id: `${actionIdPrefix}_dropdown`, options: questionData.options.map(label => ({ text: { type: 'plain_text', text: label }, value: valuePayload(label) })) }] };
+                    break;
+                case 'checkboxes':
+                    responseBlock = { type: 'actions', elements: [{ type: 'checkboxes', action_id: `${actionIdPrefix}_checkboxes`, options: questionData.options.map(label => ({ text: { type: 'mrkdwn', text: label }, value: valuePayload(label) })) }] };
+                    break;
+                default:
+                    responseBlock = { type: 'actions', elements: questionData.options.map((label, optionIndex) => ({ type: 'button', text: { type: 'plain_text', text: label }, value: valuePayload(label), action_id: `${actionIdPrefix}_btn${optionIndex}` })) };
+                    break;
+            }
+            allBlocks.push(responseBlock);
+        }
+        if (parsedQuestions.some(q => q.pollFormat === 'checkboxes')) {
+            allBlocks.push({ type: 'divider' }, { type: 'actions', elements: [{ type: 'button', text: { type: 'plain_text', text: 'Submit All My Answers' }, style: 'primary', action_id: `submit_checkbox_answers`, value: JSON.stringify({ sheetName }) }] });
+        }
+        for (const conversationId of conversationIds) {
+            if (conversationId.startsWith('C')) { await client.conversations.join({ channel: conversationId }); }
+            await client.chat.postMessage({ channel: conversationId, text: 'You have a new survey to complete!', blocks: allBlocks, unfurl_links: true, unfurl_media: true });
+        }
     } catch (error) {
-        // 3. If any part of the logic fails, log it and send a message to the user.
         console.error("Error processing poll submission:", error);
-        await client.chat.postEphemeral({
-            user: body.user.id,
-            channel: body.user.id,
-            text: "Sorry, something went wrong while creating your survey. Please check the application logs for more details."
-        });
+        await client.chat.postEphemeral({ user: body.user.id, channel: body.user.id, text: "Sorry, something went wrong creating your survey." });
     }
 });
 
-// --- Group Management ---
-// ... (Your group management code remains the same) ...
 
 // --- Response Action Handlers ---
-// ... (Your response action handlers remain the same) ...
+
+// Generic handler for single-answer responses (Buttons, Dropdown)
+const handleSingleAnswer = async ({ ack, action, body, client }) => {
+    await ack();
+    try {
+        const payload = action.type === 'static_select' ? action.selected_option.value : action.value;
+        const { sheetName, label, question } = JSON.parse(payload);
+        const user = body.user.id;
+
+        const alreadyAnswered = await checkIfAnswered({ sheetName, user, question });
+        if (alreadyAnswered) {
+            await client.chat.postEphemeral({ user, channel: body.channel.id, text: "You've already answered this question! Your first answer is recorded." });
+            return;
+        }
+
+        await saveOrUpdateResponse({ sheetName, user, question, answer: label, timestamp: new Date().toISOString() });
+        await client.chat.postEphemeral({ user, channel: body.channel.id, text: `✅ Your answer, "${label}", has been recorded.` });
+    } catch (error) {
+        console.error('Error processing single-answer response:', error);
+    }
+};
+
+// Handler for Buttons (uses regex to match generated action_id)
+app.action(/^poll_response_.*_btn\d+$/, handleSingleAnswer);
+
+// Handler for Dropdowns (uses regex to match generated action_id)
+app.action(/^poll_response_.*_dropdown$/, handleSingleAnswer);
+
+// Handler for Checkbox selections (stores selections temporarily)
+app.action(/^poll_response_.*_checkboxes$/, async ({ ack, action, body }) => {
+    await ack();
+    const user = body.user.id;
+    if (!checkboxSelections[user]) {
+        checkboxSelections[user] = {};
+    }
+    const { sheetName, question } = JSON.parse(action.selected_options[0].value); // Get context from first option
+    const selectedLabels = action.selected_options.map(opt => JSON.parse(opt.value).label);
+    const selectionKey = `${sheetName}__${question}`;
+    checkboxSelections[user][selectionKey] = selectedLabels;
+});
+
+// Handler for the final "Submit" button for checkbox questions
+app.action('submit_checkbox_answers', async ({ ack, body, client }) => {
+    await ack();
+    const user = body.user.id;
+    const userSelections = checkboxSelections[user];
+
+    if (!userSelections || Object.keys(userSelections).length === 0) {
+        await client.chat.postEphemeral({ user, channel: body.channel.id, text: "You haven't selected any answers. Please check some boxes before submitting." });
+        return;
+    }
+
+    try {
+        let answersRecordedCount = 0;
+        for (const [key, answers] of Object.entries(userSelections)) {
+            const [sheetName, question] = key.split('__');
+            const combinedAnswer = answers.join(', '); // Combine answers into a single string
+
+            await saveOrUpdateResponse({ sheetName, user, question, answer: combinedAnswer, timestamp: new Date().toISOString() });
+            answersRecordedCount++;
+        }
+
+        await client.chat.postEphemeral({ user, channel: body.channel.id, text: `✅ Success! Your ${answersRecordedCount} answer(s) have been submitted.` });
+        
+        // Clear the stored selections for the user
+        delete checkboxSelections[user];
+
+    } catch (error) {
+        console.error('Error submitting checkbox answers:', error);
+        await client.chat.postEphemeral({ user, channel: body.channel.id, text: "Sorry, there was an error submitting your answers." });
+    }
+});
+
+
+// --- Group Management ---
+
+app.command('/creategroup', async ({ ack, body, client }) => {
+    await ack();
+    try {
+        await client.views.open({
+            trigger_id: body.trigger_id,
+            view: {
+                type: 'modal',
+                callback_id: 'group_creation_submission',
+                title: { type: 'plain_text', text: 'Create User Group' },
+                submit: { type: 'plain_text', text: 'Create' },
+                blocks: [
+                    { type: 'input', block_id: 'group_name_block', label: { type: 'plain_text', text: 'Group Name' }, element: { type: 'plain_text_input', action_id: 'group_name_input' } },
+                    { type: 'input', block_id: 'group_members_block', label: { type: 'plain_text', text: 'Group Members' }, element: { type: 'multi_users_select', placeholder: { type: 'plain_text', text: 'Select users' }, action_id: 'group_members_select' } }
+                ]
+            }
+        });
+    } catch (error) {
+        console.error('Failed to open group creation modal:', error);
+    }
+});
+
+app.view('group_creation_submission', async ({ ack, body, view, client }) => {
+    const groupName = view.state.values.group_name_block.group_name_input.value;
+    const memberIds = view.state.values.group_members_block.group_members_select.selected_users.join(',');
+    const creatorId = body.user.id;
+
+    if (!groupName || !memberIds) {
+        await ack({
+            response_action: 'errors',
+            errors: {
+                group_name_block: 'Group name cannot be empty.',
+                group_members_block: 'You must select at least one member.'
+            }
+        });
+        return;
+    }
+    
+    await ack();
+
+    try {
+        await saveUserGroup({ groupName, creatorId, memberIds });
+        await client.chat.postEphemeral({
+            user: creatorId,
+            channel: creatorId,
+            text: `Successfully created the user group "${groupName}"!`
+        });
+    } catch (error) {
+        console.error('Error saving user group:', error);
+        await client.chat.postEphemeral({
+            user: creatorId,
+            channel: creatorId,
+            text: `There was an error creating the group "${groupName}". Please check the logs.`
+        });
+    }
+});
 
 
 (async () => {
