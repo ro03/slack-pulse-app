@@ -1,6 +1,6 @@
 // 1. All require statements should be at the top
 const { App, ExpressReceiver } = require('@slack/bolt');
-const { saveResponseToSheet } = require('./sheets');
+const { saveResponseToSheet, createNewSheet, checkIfAnswered } = require('./sheets');
 
 // 2. Configure dotenv for local development
 if (process.env.NODE_ENV !== 'production') {
@@ -23,12 +23,10 @@ const app = new App({
   receiver: receiver,
 });
 
-// ✨ NEW: Helper function to generate modal blocks dynamically
 // Helper function to generate modal blocks dynamically
 const generateModalBlocks = (questionCount = 1) => {
   let blocks = [];
 
-  // --- NEW: Section for optional introductory content ---
   // Section for optional introductory content
   blocks.push(
     {
@@ -95,9 +93,8 @@ app.command('/ask', async ({ ack, body, client }) => {
         callback_id: 'poll_submission',
         title: { type: 'plain_text', text: 'Create a New Survey' },
         submit: { type: 'plain_text', text: 'Send Survey' },
-        blocks: generateModalBlocks(1) // Start with 1 question
-        // ✨ MODIFIED: Start with 0 questions, allowing for intro-only messages
-        blocks: generateModalBlocks(0) 
+        // CORRECTED: The duplicate 'blocks' key was removed here.
+        blocks: generateModalBlocks(0)
       }
     });
   } catch (error) {
@@ -105,7 +102,6 @@ app.command('/ask', async ({ ack, body, client }) => {
   }
 });
 
-// ✨ NEW: This listener handles the "Add Another Question" button click
 // This listener handles the "Add Another Question" button click
 app.action('add_question_button', async ({ ack, body, client, action }) => {
   await ack();
@@ -132,7 +128,6 @@ app.action('add_question_button', async ({ ack, body, client, action }) => {
   }
 });
 
-
 // This listener handles the submission of the modal form
 app.view('poll_submission', async ({ ack, body, view, client }) => {
   await ack();
@@ -140,11 +135,9 @@ app.view('poll_submission', async ({ ack, body, view, client }) => {
   const values = view.state.values;
   const userIds = values.users_block.users_select.selected_users;
 
-  // --- NEW: This will hold ALL blocks for the single survey message ---
   // This will hold ALL blocks for the single survey message
   let allBlocks = [];
 
-  // --- NEW: Read and build the introductory blocks ---
   // Read and build the introductory blocks
   const introMessage = values.intro_message_block?.intro_message_input?.value;
   const imageUrl = values.image_url_block?.image_url_input?.value;
@@ -191,10 +184,8 @@ app.view('poll_submission', async ({ ack, body, view, client }) => {
     }
   }
 
-  // --- UPDATED: Loop through questions and ADD their blocks to the 'allBlocks' array ---
   // Loop through questions and ADD their blocks to the 'allBlocks' array
   for (const [questionIndex, questionData] of parsedQuestions.entries()) {
-
     // Use a header for each question to separate them visually
     allBlocks.push({
         type: 'header',
@@ -227,8 +218,7 @@ app.view('poll_submission', async ({ ack, body, view, client }) => {
       );
   }
 
-  // --- UPDATED: Send the single, combined survey message to each user ---
-  // ✨ NEW: Check if the survey has any content before sending
+  // Check if the survey has any content before sending
   if (allBlocks.length === 0) {
     console.log(`User ${body.user.name} tried to send an empty survey.`);
     try {
@@ -262,10 +252,10 @@ app.view('poll_submission', async ({ ack, body, view, client }) => {
 // Generic handler to process and save a response
 async function processAndSaveResponse(user, question, answer, timestamp) {
   // This function doesn't need to change.
+  // Note: If you add sheet naming logic, you would pass the sheetName here.
   await saveResponseToSheet({ user, question, answer, timestamp });
 }
 
-// ✨ UPDATED: Listener for buttons and dropdowns that only updates the answered question
 // Listener for buttons and dropdowns that only updates the answered question
 app.action(/^poll_response_.+$/, async ({ ack, body, client, action }) => {
   await ack();
@@ -297,7 +287,6 @@ app.action(/^poll_response_.+$/, async ({ ack, body, client, action }) => {
       };
 
       // 4. Replace the old question block with the new confirmation block
-      // Replace the old question block with the new confirmation block
       originalBlocks.splice(blockIndexToReplace - 1, 2, confirmationBlock);
     }
 
@@ -313,7 +302,6 @@ app.action(/^poll_response_.+$/, async ({ ack, body, client, action }) => {
   }
 });
 
-// ✨ UPDATED: Listener for the 'Submit Answers' button for one or more checkbox questions
 // Listener for the 'Submit Answers' button for one or more checkbox questions
 app.action('submit_checkbox_answers', async ({ ack, body, client }) => {
     await ack();
