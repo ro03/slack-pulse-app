@@ -28,20 +28,13 @@ receiver.app.get('/', (req, res) => {
 // 4. Define the OAuth callback route on the receiver
 receiver.app.get('/api/slack/callback', async (req, res) => {
   try {
-    // Exchange the temporary authorization code for an access token
     const response = await app.client.oauth.v2.access({
       client_id: process.env.SLACK_CLIENT_ID,
       client_secret: process.env.SLACK_CLIENT_SECRET,
       code: req.query.code,
     });
-
-    // TODO: Securely store the access token (response.access_token)
-    // and team information in your database.
     console.log('OAuth Response:', response);
-
-    // Respond to the user that the installation was successful
     res.send('Your app has been successfully installed! You can close this window.');
-
   } catch (error) {
     console.error('OAuth Error:', error);
     res.status(500).send('Something went wrong during installation.');
@@ -55,12 +48,10 @@ const generateModalBlocks = (questionCount = 1, userGroups = []) => {
     blocks.push({ type: 'divider' }, { type: 'header', text: { type: 'plain_text', text: `Question ${i}` } }, { type: 'input', optional: true, block_id: `question_block_${i}`, label: { type: 'plain_text', text: 'Poll Question' }, element: { type: 'plain_text_input', action_id: `question_input_${i}` } }, { type: 'input', optional: true, block_id: `options_block_${i}`, label: { type: 'plain_text', text: 'Answer Options (one per line)' }, element: { type: 'plain_text_input', multiline: true, action_id: `options_input_${i}` } }, { type: 'input', block_id: `format_block_${i}`, label: { type: 'plain_text', text: 'Poll Format' }, element: { type: 'static_select', action_id: `format_select_${i}`, initial_option: { text: { type: 'plain_text', text: 'Buttons' }, value: 'buttons' }, options: [{ text: { type: 'plain_text', text: 'Buttons' }, value: 'buttons' }, { text: { type: 'plain_text', text: 'Dropdown Menu' }, value: 'dropdown' }, { text: { type: 'plain_text', text: 'Checkboxes (Multiple Answers)' }, value: 'checkboxes' }] } });
   }
   blocks.push({ type: 'divider' }, { type: 'actions', elements: [{ type: 'button', text: { type: 'plain_text', text: '➕ Add Another Question' }, action_id: 'add_question_button', value: `${questionCount}` }] });
-
   if (userGroups.length > 0) {
     blocks.push({ type: 'input', block_id: 'group_destination_block', optional: true, label: { type: 'plain_text', text: 'OR... Send to a Saved Group' }, element: { type: 'static_select', action_id: 'group_destination_select', placeholder: { type: 'plain_text', text: 'Select a group' }, options: userGroups.map(group => ({ text: { type: 'plain_text', text: group.GroupName }, value: group.GroupName })) } });
   }
   blocks.push({ type: 'input', block_id: 'destinations_block', optional: true, label: { type: 'plain_text', text: 'Send survey to these users or channels' }, element: { type: 'multi_conversations_select', placeholder: { type: 'plain_text', text: 'Select users and/or channels' }, action_id: 'destinations_select', filter: { include: ["public", "private", "im"], exclude_bot_users: true } } });
-
   return blocks;
 };
 
@@ -94,7 +85,6 @@ app.action('add_question_button', async ({ ack, body, client, action }) => {
         const currentQuestionCount = parseInt(action.value, 10);
         const newQuestionCount = currentQuestionCount + 1;
         const userGroups = await getAllUserGroups();
-
         await client.views.update({
             view_id: body.view.id,
             hash: body.view.hash,
@@ -114,19 +104,15 @@ app.action('add_question_button', async ({ ack, body, client, action }) => {
 app.view('poll_submission', async ({ ack, body, view, client }) => {
     const values = view.state.values;
     const user = body.user.id;
-
     let finalConversationIds = new Set();
     const manualDestinations = values.destinations_block.destinations_select.selected_conversations || [];
     manualDestinations.forEach(id => finalConversationIds.add(id));
-
     const selectedGroupName = values.group_destination_block?.group_destination_select?.selected_option?.value;
     if (selectedGroupName) {
         const groupMemberIds = await getGroupMembers(selectedGroupName);
         groupMemberIds.forEach(id => finalConversationIds.add(id));
     }
-
     const conversationIds = Array.from(finalConversationIds);
-
     if (conversationIds.length === 0) {
         await ack({
             response_action: 'errors',
@@ -134,9 +120,7 @@ app.view('poll_submission', async ({ ack, body, view, client }) => {
         });
         return;
     }
-
     await ack();
-
     try {
         const parsedQuestions = [];
         const questionKeys = Object.keys(values).filter(key => key.startsWith('question_block_'));
@@ -149,17 +133,14 @@ app.view('poll_submission', async ({ ack, body, view, client }) => {
                 parsedQuestions.push({ questionText, options: optionsText.split('\n').filter(opt => opt.trim() !== ''), pollFormat });
             }
         }
-        
         let allBlocks = [];
         const introMessage = values.intro_message_block?.intro_message_input?.value;
         const imageUrl = values.image_url_block?.image_url_input?.value;
         const videoUrl = values.video_url_block?.video_url_input?.value;
-
         if (introMessage) { allBlocks.push({ type: 'section', text: { type: 'mrkdwn', text: introMessage } }); }
         if (imageUrl) { allBlocks.push({ type: 'image', image_url: imageUrl, alt_text: 'Survey introduction image' }); }
         if (videoUrl) { allBlocks.push({ type: 'section', text: { type: 'mrkdwn', text: `▶️ <${videoUrl}>` } }); }
-
-        if (parsedQuestions.length === 0) { // Message-only post
+        if (parsedQuestions.length === 0) {
             if (allBlocks.length === 0) {
                 await client.chat.postEphemeral({ user, channel: user, text: "You can't send an empty message. Please add an introductory message or some questions." });
                 return;
@@ -167,30 +148,27 @@ app.view('poll_submission', async ({ ack, body, view, client }) => {
             const fallbackText = introMessage ? `You have a new message: ${introMessage.substring(0, 50)}...` : 'You have a new message!';
             for (const conversationId of conversationIds) {
                 try {
-                    if (conversationId.startsWith('C')) { await client.conversations.join({ channel: conversationId }); }
+                    // ✅ CORRECTED LOGIC: No need to join public channels
                     await client.chat.postMessage({ channel: conversationId, text: fallbackText, blocks: allBlocks, unfurl_links: true, unfurl_media: true });
                 } catch (error) { console.error(`Failed to send message-only post to ${conversationId}`, error); }
             }
-        } else { // Full survey with questions
+        } else {
             const userInfo = await client.users.info({ user });
             const creatorName = userInfo.user.profile.real_name || userInfo.user.name;
             const questionTexts = parsedQuestions.map(q => q.questionText);
             const firstQuestion = parsedQuestions[0].questionText.substring(0, 50).replace(/[/\\?%*:|"<>]/g, '');
             const sheetName = `Survey - ${firstQuestion} - ${Date.now()}`;
             const sheetCreated = await createNewSheet(sheetName, creatorName, questionTexts);
-
             if (!sheetCreated) {
                 await client.chat.postEphemeral({ user, channel: user, text: "There was an error creating a new Google Sheet. Please check the logs." });
                 return;
             }
             if (allBlocks.length > 0) { allBlocks.push({ type: 'divider' }); }
-
             for (const [questionIndex, questionData] of parsedQuestions.entries()) {
                 allBlocks.push({ type: 'header', text: { type: 'plain_text', text: questionData.questionText } });
                 let responseBlock;
                 const baseActionId = `poll_response_${Date.now()}_q${questionIndex}`;
                 const valuePayload = (label) => JSON.stringify({ sheetName, label, question: questionData.questionText });
-
                 switch (questionData.pollFormat) {
                     case 'dropdown':
                         responseBlock = { block_id: `${baseActionId}_block`, type: 'actions', elements: [{ type: 'static_select', placeholder: { type: 'plain_text', text: 'Choose an answer' }, action_id: baseActionId, options: questionData.options.map(label => ({ text: { type: 'plain_text', text: label }, value: valuePayload(label) })) }] };
@@ -210,7 +188,7 @@ app.view('poll_submission', async ({ ack, body, view, client }) => {
             }
             for (const conversationId of conversationIds) {
                 try {
-                    if (conversationId.startsWith('C')) { await client.conversations.join({ channel: conversationId }); }
+                    // ✅ CORRECTED LOGIC: No need to join public channels
                     await client.chat.postMessage({ channel: conversationId, text: 'You have a new survey to complete!', blocks: allBlocks, unfurl_links: true, unfurl_media: true });
                 } catch (error) { console.error(`Failed to send survey to ${conversationId}`, error); }
             }
@@ -224,6 +202,8 @@ app.view('poll_submission', async ({ ack, body, view, client }) => {
         });
     }
 });
+
+// ... (The rest of your app.js file remains the same) ...
 
 app.command('/groups', async ({ ack, body, client }) => {
   await ack();
@@ -280,7 +260,6 @@ app.view('create_group_submission', async ({ ack, body, view, client }) => {
   const groupName = view.state.values.group_name_block.group_name_input.value;
   const memberIds = view.state.values.group_members_block.group_members_select.selected_users;
   const creatorId = body.user.id;
-
   if (!groupName || memberIds.length === 0) {
     await ack({
       response_action: 'errors',
@@ -292,7 +271,6 @@ app.view('create_group_submission', async ({ ack, body, view, client }) => {
     return;
   }
   await ack();
-
   try {
     await saveUserGroup({ groupName: groupName, creatorId: creatorId, memberIds: memberIds.join(',') });
     await client.chat.postEphemeral({ channel: creatorId, user: creatorId, text: `✅ Your new group "*${groupName}*" has been saved.` });
@@ -301,7 +279,6 @@ app.view('create_group_submission', async ({ ack, body, view, client }) => {
     await client.chat.postEphemeral({ channel: creatorId, user: creatorId, text: `❌ There was an error saving your group. Please try again.` });
   }
 });
-
 
 app.action(/^poll_response_.+$/, async ({ ack, body, client, action }) => {
   await ack();
