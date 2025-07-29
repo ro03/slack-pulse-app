@@ -43,32 +43,26 @@ const saveUserGroup = async ({ groupName, creatorId, memberIds }) => {
 };
 
 const getAllUserGroups = async () => {
-  console.log('[DEBUG] Attempting to fetch user groups...');
-  try {
-    const sheets = await getSheetsClient();
-    const res = await sheets.spreadsheets.values.get({
-      spreadsheetId: SHEET_ID,
-      range: `${USER_GROUPS_SHEET_NAME}!A2:C`, // A2 to skip header
-      range: `${USER_GROUPS_SHEET_NAME}!A2:C`,
-    });
+    console.log('[DEBUG] Attempting to fetch user groups...');
+    try {
+        const sheets = await getSheetsClient();
+        const res = await sheets.spreadsheets.values.get({
+            spreadsheetId: SHEET_ID,
+            range: `${USER_GROUPS_SHEET_NAME}!A2:C`, // A2 to skip header
+        });
 
-    // This will show us the exact data Google is sending back
-    console.log('[DEBUG] Raw response from Google Sheets API:', JSON.stringify(res.data, null, 2));
+        console.log('[DEBUG] Raw response from Google Sheets API:', JSON.stringify(res.data, null, 2));
 
-    const rows = res.data.values || [];
-    return rows.map(row => ({ GroupName: row[0], CreatorID: row[1], MemberIDs: row[2] }));
-    const groups = rows.map(row => ({ GroupName: row[0], CreatorID: row[1], MemberIDs: row[2] }));
-    
-    // This tells us how many groups the app thinks it found
-    console.log(`[DEBUG] Found ${groups.length} groups.`);
-
-    return groups;
-  } catch (error) {
-    console.error('Error fetching all user groups:', error);
-    // This will log the full error if the request fails
-    console.error('[DEBUG] CRITICAL ERROR in getAllUserGroups:', error);
-    return [];
-  }
+        const rows = res.data.values || [];
+        const groups = rows.map(row => ({ GroupName: row[0], CreatorID: row[1], MemberIDs: row[2] }));
+        
+        console.log(`[DEBUG] Found ${groups.length} groups.`);
+        return groups;
+    } catch (error) {
+        console.error('Error fetching all user groups:', error);
+        console.error('[DEBUG] CRITICAL ERROR in getAllUserGroups:', error);
+        return [];
+    }
 };
 
 const getGroupMembers = async (groupName) => {
