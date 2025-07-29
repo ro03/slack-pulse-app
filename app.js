@@ -1,7 +1,8 @@
 // app.js
 
 const { App, ExpressReceiver } = require('@slack/bolt');
-const { createNewSheet, saveResponseToSheet, checkIfAnswered } = require('./sheets'); // MODIFIED
+// MODIFIED: Renamed save function for clarity
+const { createNewSheet, saveOrUpdateResponse, checkIfAnswered } = require('./sheets');
 
 const processingRequests = new Set();
 
@@ -50,8 +51,7 @@ app.action('add_question_button', async ({ ack, body, client, action }) => {
     }
 });
 
-
-// MODIFIED: This view submission now creates the new sheet
+// MODIFIED: This view now sends the creator's name and question list to the sheets helper
 app.view('poll_submission', async ({ ack, body, view, client }) => {
     await ack();
     const values = view.state.values;
@@ -69,23 +69,28 @@ app.view('poll_submission', async ({ ack, body, view, client }) => {
         }
     }
 
+    // This logic correctly prevents creating a sheet for an empty survey
     if (parsedQuestions.length === 0) {
-        // Optional: Send a message to the user if they tried to create an empty survey
         await client.chat.postEphemeral({ user, channel: user, text: "You can't send a survey with no questions." });
         return;
     }
 
-    // NEW: Generate a unique sheet name and create the sheet
-    const firstQuestion = parsedQuestions[0].questionText.substring(0, 50).replace(/[/\\?%*:|"<>]/g, ''); // Sanitize for sheet name
+    // NEW: Get the creator's name and the list of question texts for the sheet headers
+    const userInfo = await client.users.info({ user: body.user.id });
+    const creatorName = userInfo.user.profile.real_name || userInfo.user.name;
+    const questionTexts = parsedQuestions.map(q => q.questionText);
+    const firstQuestion = parsedQuestions[0].questionText.substring(0, 50).replace(/[/\\?%*:|"<>]/g, '');
     const sheetName = `Survey - ${firstQuestion} - ${Date.now()}`;
-    const sheetCreated = await createNewSheet(sheetName);
+    
+    // MODIFIED: Pass creator name and question list to create the sheet
+    const sheetCreated = await createNewSheet(sheetName, creatorName, questionTexts);
 
     if (!sheetCreated) {
         await client.chat.postEphemeral({ user, channel: user, text: "There was an error creating a new Google Sheet for this survey. Please check the logs." });
         return;
     }
     
-    // Build the message blocks
+    // ...The rest of the view submission logic (building and sending the message) is unchanged...
     let allBlocks = [];
     const introMessage = values.intro_message_block?.intro_message_input?.value;
     const imageUrl = values.image_url_block?.image_url_input?.value;
@@ -94,14 +99,11 @@ app.view('poll_submission', async ({ ack, body, view, client }) => {
     if (imageUrl) { allBlocks.push({ type: 'image', image_url: imageUrl, alt_text: 'Survey introduction image' }); }
     if (videoUrl) { allBlocks.push({ type: 'section', text: { type: 'mrkdwn', text: `▶️ <${videoUrl}>` } }); }
     if (allBlocks.length > 0) { allBlocks.push({ type: 'divider' }); }
-
     for (const [questionIndex, questionData] of parsedQuestions.entries()) {
         allBlocks.push({ type: 'header', text: { type: 'plain_text', text: questionData.questionText } });
         let responseBlock;
         const baseActionId = `poll_response_${Date.now()}_q${questionIndex}`;
-        // MODIFIED: The value now includes the unique sheetName
         const valuePayload = (label) => JSON.stringify({ sheetName, label, question: questionData.questionText });
-
         switch (questionData.pollFormat) {
             case 'dropdown':
                 responseBlock = { type: 'actions', elements: [{ type: 'static_select', placeholder: { type: 'plain_text', text: 'Choose an answer' }, action_id: baseActionId, options: questionData.options.map(label => ({ text: { type: 'plain_text', text: label }, value: valuePayload(label) })) }] };
@@ -117,11 +119,8 @@ app.view('poll_submission', async ({ ack, body, view, client }) => {
         allBlocks.push(responseBlock);
     }
     if (parsedQuestions.some(q => q.pollFormat === 'checkboxes')) {
-        // MODIFIED: The checkbox submit button also needs the sheetName
         allBlocks.push({ type: 'divider' }, { type: 'actions', elements: [{ type: 'button', text: { type: 'plain_text', text: 'Submit All My Answers' }, style: 'primary', action_id: `submit_checkbox_answers`, value: JSON.stringify({ sheetName }) }] });
     }
-
-    // Send the message to the selected conversations
     const conversationIds = values.destinations_block.destinations_select.selected_conversations;
     for (const conversationId of conversationIds) {
         try {
@@ -135,7 +134,7 @@ app.view('poll_submission', async ({ ack, body, view, client }) => {
     }
 });
 
-// MODIFIED: Action listeners now get sheetName from the payload
+// MODIFIED: This action now calls `saveOrUpdateResponse`
 app.action(/^poll_response_.+$/, async ({ ack, body, client, action }) => {
     await ack();
     if (action.type !== 'button' && action.type !== 'static_select') return;
@@ -166,10 +165,11 @@ app.action(/^poll_response_.+$/, async ({ ack, body, client, action }) => {
             return;
         }
 
-        await saveResponseToSheet({ sheetName, user: userName, question, answer: label, timestamp: new Date().toISOString() });
+        // Use the new save function
+        await saveOrUpdateResponse({ sheetName, user: userName, question, answer: label, timestamp: new Date().toISOString() });
 
         const channelId = body.channel.id;
-        if (channelId.startsWith('U')) {
+        if (channelId.startsWith('U')) { // Update message in DMs
             const originalBlocks = body.message.blocks;
             const actionBlockId = body.actions[0].block_id;
             const blockIndexToReplace = originalBlocks.findIndex(block => block.block_id === actionBlockId);
@@ -179,7 +179,7 @@ app.action(/^poll_response_.+$/, async ({ ack, body, client, action }) => {
                 originalBlocks.splice(blockIndexToReplace - 1, 2, confirmationBlock);
             }
             await client.chat.update({ channel: channelId, ts: body.message.ts, blocks: originalBlocks });
-        } else {
+        } else { // Post ephemeral confirmation in channels
             await client.chat.postEphemeral({ channel: channelId, user: body.user.id, text: `✅ Thank you for your response to "*${question}*". We've recorded your answer: *${label}*` });
         }
     } finally {
@@ -187,7 +187,7 @@ app.action(/^poll_response_.+$/, async ({ ack, body, client, action }) => {
     }
 });
 
-// MODIFIED: Checkbox handler now gets sheetName from the submit button's value
+// MODIFIED: This action now combines checkbox answers into one string
 app.action('submit_checkbox_answers', async ({ ack, body, client, action }) => {
     await ack();
     const { sheetName } = JSON.parse(action.value);
@@ -218,11 +218,12 @@ app.action('submit_checkbox_answers', async ({ ack, body, client, action }) => {
             return;
         }
 
-        // The rest of the checkbox logic...
-        const otherOption = selectedOptions.find(opt => JSON.parse(opt.value).label.trim().toLowerCase() === 'other');
-        if (otherOption) {
-            const normalOptions = selectedOptions.filter(opt => JSON.parse(opt.value).label.trim().toLowerCase() !== 'other');
-            const metadata = { sheetName, question: questionText, channel_id: body.channel.id, message_ts: body.message.ts, response_block_id: actionBlockId, normal_answers: normalOptions.map(opt => JSON.parse(opt.value).label) };
+        const answerLabels = selectedOptions.map(opt => JSON.parse(opt.value).label);
+        const otherOptionSelected = answerLabels.some(label => label.trim().toLowerCase() === 'other');
+        
+        if (otherOptionSelected) {
+            const normalOptions = answerLabels.filter(label => label.trim().toLowerCase() !== 'other');
+            const metadata = { sheetName, question: questionText, channel_id: body.channel.id, message_ts: body.message.ts, response_block_id: actionBlockId, normal_answers: normalOptions };
             await client.views.open({
                 trigger_id: body.trigger_id,
                 view: { type: 'modal', callback_id: 'other_option_submission', private_metadata: JSON.stringify(metadata), title: { type: 'plain_text', text: 'Specify "Other"' }, submit: { type: 'plain_text', text: 'Submit' }, blocks: [{ type: 'input', block_id: 'other_input_block', label: { type: 'plain_text', text: `You selected "Other" for the question:\n*${questionText}*` }, element: { type: 'plain_text_input', action_id: 'other_input', multiline: true } }] }
@@ -230,26 +231,27 @@ app.action('submit_checkbox_answers', async ({ ack, body, client, action }) => {
             return;
         }
 
-        const answers = selectedOptions.map(opt => JSON.parse(opt.value));
-        for (const answer of answers) {
-            await saveResponseToSheet({ sheetName, user: userName, question: answer.question, answer: answer.label, timestamp: new Date().toISOString() });
-        }
+        // NEW: Combine answers into a single comma-separated string
+        const combinedAnswer = answerLabels.join(', ');
+        await saveOrUpdateResponse({ sheetName, user: userName, question: questionText, answer: combinedAnswer, timestamp: new Date().toISOString() });
 
         const channelId = body.channel.id;
-        const answerLabels = answers.map(a => `"${a.label}"`).join(', ');
-        if (channelId.startsWith('U')) {
+        const confirmationLabels = answerLabels.map(a => `"${a}"`).join(', ');
+
+        if (channelId.startsWith('U')) { // Update message in DMs
             let originalBlocks = body.message.blocks;
             const blockIndexToReplace = originalBlocks.findIndex(b => b.block_id === actionBlockId);
             if (blockIndexToReplace > -1) {
                 const headerBlock = originalBlocks[blockIndexToReplace - 1];
-                const confirmationBlock = { type: 'context', elements: [{ type: 'mrkdwn', text: `✅ *${headerBlock.text.text}* — You answered: *${answerLabels}*` }] };
+                const confirmationBlock = { type: 'context', elements: [{ type: 'mrkdwn', text: `✅ *${headerBlock.text.text}* — You answered: *${confirmationLabels}*` }] };
                 originalBlocks.splice(blockIndexToReplace - 1, 2, confirmationBlock);
             }
+            // Remove the 'Submit' button
             const submitButtonIndex = originalBlocks.findIndex(b => b.type === 'actions' && b.elements[0]?.action_id === 'submit_checkbox_answers');
             if (submitButtonIndex > -1) { originalBlocks.splice(submitButtonIndex - 1, 2); }
             await client.chat.update({ channel: channelId, ts: body.message.ts, blocks: originalBlocks });
-        } else {
-            const confirmationText = `For "*${questionText}*", you selected: *${answerLabels}*`;
+        } else { // Post ephemeral confirmation in channels
+            const confirmationText = `For "*${questionText}*", you selected: *${confirmationLabels}*`;
             await client.chat.postEphemeral({ channel: channelId, user: body.user.id, text: `✅ Thank you! Your survey responses have been submitted.\n${confirmationText}` });
         }
     } finally {
@@ -257,7 +259,7 @@ app.action('submit_checkbox_answers', async ({ ack, body, client, action }) => {
     }
 });
 
-// MODIFIED: The "Other" modal submission now gets the sheetName from metadata
+// MODIFIED: This view now combines "Other" with any other checkbox answers
 app.view('other_option_submission', async ({ ack, body, view, client }) => {
     const metadata = JSON.parse(view.private_metadata);
     const { sheetName, question, channel_id, message_ts, response_block_id, normal_answers } = metadata;
@@ -267,16 +269,19 @@ app.view('other_option_submission', async ({ ack, body, view, client }) => {
     const userInfo = await client.users.info({ user: body.user.id });
     const userName = userInfo.user.profile.real_name || userInfo.user.name;
 
-    await saveResponseToSheet({ sheetName, user: userName, question, answer: finalAnswer, timestamp: new Date().toISOString() });
-    
-    let allAnswersForConfirmation = [finalAnswer];
+    let combinedAnswer = finalAnswer;
+    let confirmationLabels = [finalAnswer];
+
+    // If there were other checkbox answers, combine them
     if (normal_answers && normal_answers.length > 0) {
-        allAnswersForConfirmation.push(...normal_answers);
-        for (const answer of normal_answers) {
-            await saveResponseToSheet({ sheetName, user: userName, question, answer, timestamp: new Date().toISOString() });
-        }
+        const allLabels = [...normal_answers, finalAnswer];
+        combinedAnswer = allLabels.join(', ');
+        confirmationLabels = allLabels;
     }
-    const confirmationText = allAnswersForConfirmation.map(a => `*${a}*`).join(', ');
+    
+    await saveOrUpdateResponse({ sheetName, user: userName, question, answer: combinedAnswer, timestamp: new Date().toISOString() });
+    
+    const confirmationText = confirmationLabels.map(a => `*${a}*`).join(', ');
 
     if (channel_id.startsWith('U')) {
         const result = await client.conversations.history({ channel: channel_id, latest: message_ts, limit: 1, inclusive: true });
@@ -287,7 +292,7 @@ app.view('other_option_submission', async ({ ack, body, view, client }) => {
             const confirmationBlock = {type: 'context',elements: [{ type: 'mrkdwn', text: `✅ *${headerBlock.text.text}* — You answered: ${confirmationText}` }]};
             originalBlocks.splice(blockIndexToReplace - 1, 2, confirmationBlock);
             const submitButtonIndex = originalBlocks.findIndex(b => b.type === 'actions' && b.elements[0]?.action_id === 'submit_checkbox_answers');
-            if (submitButtonIndex > -1) { originalBlocks.splice(submitButtonIndex - 1, 2); }
+            if (submitButtonIndex > -1) { originalBlocks.splice(submitButtonIndex - 1, 2); } // Also remove submit button if present
         }
         await client.chat.update({channel: channel_id,ts: message_ts,blocks: originalBlocks});
     } else {
@@ -297,6 +302,6 @@ app.view('other_option_submission', async ({ ack, body, view, client }) => {
 
 
 (async () => {
-  await app.start(process.env.PORT || 3000);
-  console.log('⚡️ Bolt app is running!');
+  await app.start(process.env.PORT || 3000);
+  console.log('⚡️ Bolt app is running!');
 })();
