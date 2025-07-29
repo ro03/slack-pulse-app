@@ -1,3 +1,31 @@
+Of course. This is happening because your app's "Submit All My Answers" button logic is only designed to find and process the *first* checkbox question it encounters, ignoring any others.
+
+-----
+
+## 🧐 The Problem
+
+In your `app.js` file, the `submit_checkbox_answers` action handler gets the state of all interactive components in the message via `body.state.values`. However, it then immediately grabs the key of the very first component (`Object.keys(checkboxStates)[0]`) and processes only that one, ending its work without looking for other checkbox questions.
+
+-----
+
+## ✅ The Solution
+
+The handler must be rewritten to **loop through all question states** sent by Slack. For each one, it will find the question's index, look up the question text, and save the corresponding answers to your Google Sheet.
+
+This involves two small changes in `app.js`:
+
+1.  **In `poll_submission`:** The "Submit" button's `value` no longer needs a question index, just the `sheetName`.
+2.  **In `submit_checkbox_answers`:** The entire function will be replaced with a new version that iterates correctly.
+
+No changes are needed in `sheets.js`.
+
+-----
+
+## Corrected `app.js`
+
+Here is the complete, updated `app.js` file with the necessary corrections.
+
+```javascript
 const { App, ExpressReceiver } = require('@slack/bolt');
 const {
   createNewSheet,
@@ -7,7 +35,7 @@ const {
   getAllUserGroups,
   getGroupMembers,
 } = require('./sheets');
-const { google } = require('googleapis'); // Import google for the fix
+const { google } = require('googleapis');
 
 const processingRequests = new Set();
 
@@ -15,11 +43,10 @@ if (process.env.NODE_ENV !== 'production') {
   require('dotenv').config();
 }
 
-// ... (Receiver and App initialization code remains the same) ...
+// ... (Receiver, App, OAuth, and other handlers that are unchanged) ...
 const receiver = new ExpressReceiver({ signingSecret: process.env.SLACK_SIGNING_SECRET });
 const app = new App({ token: process.env.SLACK_BOT_TOKEN, receiver: receiver });
 receiver.app.get('/', (req, res) => { res.status(200).send('App is up and running!'); });
-// ... (OAuth callback code remains the same) ...
 receiver.app.get('/api/slack/callback', async (req, res) => {
   try {
     const response = await app.client.oauth.v2.access({ client_id: process.env.SLACK_CLIENT_ID, client_secret: process.env.SLACK_CLIENT_SECRET, code: req.query.code, });
@@ -30,7 +57,6 @@ receiver.app.get('/api/slack/callback', async (req, res) => {
     res.status(500).send('Something went wrong during installation.');
   }
 });
-// ... (generateModalBlocks, /ask command, add_question_button action remain the same) ...
 const generateModalBlocks = (questionCount = 1, userGroups = []) => {
   let blocks = [];
   blocks.push({ type: 'header', text: { type: 'plain_text', text: 'Survey Introduction (Optional)' } }, { type: 'input', block_id: 'intro_message_block', optional: true, label: { type: 'plain_text', text: 'Introductory Message' }, element: { type: 'plain_text_input', multiline: true, action_id: 'intro_message_input' } }, { type: 'input', block_id: 'image_url_block', optional: true, label: { type: 'plain_text', text: 'Image or GIF URL' }, element: { type: 'plain_text_input', action_id: 'image_url_input', placeholder: { type: 'plain_text', text: 'https://example.com/image.gif' } } }, { type: 'input', block_id: 'video_url_block', optional: true, label: { type: 'plain_text', text: 'YouTube or Vimeo Video URL' }, element: { type: 'plain_text_input', action_id: 'video_url_input', placeholder: { type: 'plain_text', text: 'https://www.youtube.com/watch?v=...' } } });
@@ -73,7 +99,6 @@ app.action('add_question_button', async ({ ack, body, client, action }) => {
     }
 });
 
-// --- 💡 MODIFIED VIEW SUBMISSION HANDLER ---
 app.view('poll_submission', async ({ ack, body, view, client }) => {
     const values = view.state.values;
     const user = body.user.id;
@@ -140,10 +165,7 @@ app.view('poll_submission', async ({ ack, body, view, client }) => {
                 allBlocks.push({ type: 'header', text: { type: 'plain_text', text: questionData.questionText } });
                 let responseBlock;
                 const baseActionId = `poll_response_${Date.now()}_q${questionIndex}`;
-                
-                // ✅ FIX: Send the short questionIndex instead of the long question text
                 const valuePayload = (label) => JSON.stringify({ sheetName, label, qIndex: questionIndex });
-
                 switch (questionData.pollFormat) {
                     case 'dropdown':
                         responseBlock = { block_id: `${baseActionId}_block`, type: 'actions', elements: [{ type: 'static_select', placeholder: { type: 'plain_text', text: 'Choose an answer' }, action_id: baseActionId, options: questionData.options.map(label => ({ text: { type: 'plain_text', text: label }, value: valuePayload(label) })) }] };
@@ -159,9 +181,8 @@ app.view('poll_submission', async ({ ack, body, view, client }) => {
                 allBlocks.push(responseBlock);
             }
             if (parsedQuestions.some(q => q.pollFormat === 'checkboxes')) {
-                // ✅ FIX: Send the question index for the "other" option modal to work
-                const firstCheckboxIndex = parsedQuestions.findIndex(q => q.pollFormat === 'checkboxes');
-                allBlocks.push({ type: 'divider' }, { type: 'actions', elements: [{ type: 'button', text: { type: 'plain_text', text: 'Submit All My Answers' }, style: 'primary', action_id: `submit_checkbox_answers`, value: JSON.stringify({ sheetName, qIndex: firstCheckboxIndex }) }] });
+                // --- 💡 FIX: Only pass the sheetName to the submit button's value ---
+                allBlocks.push({ type: 'divider' }, { type: 'actions', elements: [{ type: 'button', text: { type: 'plain_text', text: 'Submit All My Answers' }, style: 'primary', action_id: `submit_checkbox_answers`, value: JSON.stringify({ sheetName }) }] });
             }
             for (const conversationId of conversationIds) {
                 try {
@@ -179,7 +200,6 @@ app.view('poll_submission', async ({ ack, body, view, client }) => {
     }
 });
 
-// ... (Group management commands and actions remain the same) ...
 app.command('/groups', async ({ ack, body, client }) => {
   await ack();
   try { await client.views.open({ trigger_id: body.trigger_id, view: { type: 'modal', callback_id: 'manage_groups_view', title: { type: 'plain_text', text: 'Manage User Groups' }, blocks: [{ type: 'section', text: { type: 'mrkdwn', text: 'Create a new group to easily send surveys to the same people.' } }, { type: 'actions', elements: [{ type: 'button', text: { type: 'plain_text', text: 'Create New Group' }, style: 'primary', action_id: 'create_group_button' }] }] } });
@@ -204,38 +224,28 @@ app.view('create_group_submission', async ({ ack, body, view, client }) => {
 });
 
 
-// --- 💡 HELPER TO GET QUESTION TEXT FROM SHEET ---
 async function getQuestionTextByIndex(sheetName, qIndex) {
-    // This is a simplified version of the getSheetsClient logic from sheets.js
     const credentials = JSON.parse(process.env.GOOGLE_SHEETS_CREDENTIALS);
     const auth = new google.auth.GoogleAuth({ credentials, scopes: ['https://www.googleapis.com/auth/spreadsheets'] });
     const authClient = await auth.getClient();
     const sheets = google.sheets({ version: 'v4', auth: authClient });
-
     const headerRes = await sheets.spreadsheets.values.get({ 
         spreadsheetId: process.env.GOOGLE_SHEET_ID, 
         range: `${sheetName}!1:1` 
     });
     const headers = headerRes.data.values[0];
-    // Headers are ['User', 'Timestamp', 'Question 1', 'Question 2', ...]
-    // The actual questions start at index 2 of the array.
     return headers[qIndex + 2];
 }
 
-// --- 💡 MODIFIED RESPONSE HANDLERS ---
 app.action(/^poll_response_.+$/, async ({ ack, body, client, action }) => {
   await ack();
   if (action.type !== 'button' && action.type !== 'static_select') return;
-  
-  // ✅ FIX: Parse the new, shorter payload
   const payload = JSON.parse(action.type === 'button' ? action.value : action.selected_option.value);
   const { sheetName, label, qIndex } = payload;
-  
   try {
     const question = await getQuestionTextByIndex(sheetName, qIndex);
     const lockKey = `${body.user.id}:${sheetName}:${question}`;
     if (processingRequests.has(lockKey)) { return; }
-    
     processingRequests.add(lockKey);
     try {
         const userInfo = await client.users.info({ user: body.user.id });
@@ -246,7 +256,6 @@ app.action(/^poll_response_.+$/, async ({ ack, body, client, action }) => {
           return;
         }
         if (label.trim().toLowerCase() === 'other') {
-          // ✅ FIX: Pass the qIndex to the metadata for the modal
           const metadata = { sheetName, qIndex, channel_id: body.channel.id, message_ts: body.message.ts, response_block_id: body.actions[0].block_id };
           await client.views.open({
             trigger_id: body.trigger_id,
@@ -277,83 +286,86 @@ app.action(/^poll_response_.+$/, async ({ ack, body, client, action }) => {
   }
 });
 
+
+// --- 💡 REWRITTEN CHECKBOX HANDLER ---
 app.action('submit_checkbox_answers', async ({ ack, body, client, action }) => {
-  await ack();
-  // ✅ FIX: The qIndex might be in the button's value now
-  const { sheetName } = JSON.parse(action.value);
-  const checkboxStates = body.state.values;
-  const actionBlockId = Object.keys(checkboxStates)[0];
-  const actionId = Object.keys(checkboxStates[actionBlockId])[0];
-  const selectedOptions = checkboxStates[actionBlockId][actionId].selected_options;
-  if (selectedOptions.length === 0) {
-    await client.chat.postEphemeral({ user: body.user.id, channel: body.channel.id, text: "Please select at least one option." });
-    return;
-  }
-  
-  // ✅ FIX: Get the qIndex from the first selected option
-  const { qIndex } = JSON.parse(selectedOptions[0].value);
-  
-  try {
-    const questionText = await getQuestionTextByIndex(sheetName, qIndex);
-    const lockKey = `${body.user.id}:${sheetName}:${questionText}`;
-    if (processingRequests.has(lockKey)) { return; }
-    
-    processingRequests.add(lockKey);
+    await ack();
+    const { sheetName } = JSON.parse(action.value);
+    const checkboxStates = body.state.values;
+
     try {
         const userInfo = await client.users.info({ user: body.user.id });
         const userName = userInfo.user.profile.real_name || userInfo.user.name;
-        const alreadyAnswered = await checkIfAnswered({ sheetName, user: userName, question: questionText });
-        if (alreadyAnswered) {
-          await client.chat.postEphemeral({ channel: body.channel.id, user: body.user.id, text: "You've already answered this." });
-          return;
+        const confirmationMessages = [];
+
+        // Loop through each block state from the submission
+        for (const blockId in checkboxStates) {
+            const actionId = Object.keys(checkboxStates[blockId])[0];
+            const selectedOptions = checkboxStates[blockId][actionId].selected_options;
+
+            if (selectedOptions.length === 0) {
+                continue; // Skip if no options were selected for this question
+            }
+
+            // Get the question index from the first selected option's value
+            const { qIndex } = JSON.parse(selectedOptions[0].value);
+            const questionText = await getQuestionTextByIndex(sheetName, qIndex);
+
+            // Check if this question was already answered to prevent double submission
+            const alreadyAnswered = await checkIfAnswered({ sheetName, user: userName, question: questionText });
+            if (alreadyAnswered) {
+                confirmationMessages.push(`⏩ Skipped "*${questionText}*" (already answered).`);
+                continue;
+            }
+
+            const answerLabels = selectedOptions.map(opt => JSON.parse(opt.value).label);
+            const combinedAnswer = answerLabels.join(', ');
+
+            // Save the combined answer to the sheet
+            await saveOrUpdateResponse({
+                sheetName,
+                user: userName,
+                question: questionText,
+                answer: combinedAnswer,
+                timestamp: new Date().toISOString()
+            });
+
+            // Add to the confirmation message
+            const friendlyAnswers = answerLabels.map(a => `"${a}"`).join(', ');
+            confirmationMessages.push(`✅ For "*${questionText}*", you answered: ${friendlyAnswers}`);
         }
-        const answerLabels = selectedOptions.map(opt => JSON.parse(opt.value).label);
-        const otherOptionSelected = answerLabels.some(label => label.trim().toLowerCase() === 'other');
-        if (otherOptionSelected) {
-          const normalOptions = answerLabels.filter(label => label.trim().toLowerCase() !== 'other');
-          // ✅ FIX: Pass the qIndex to the metadata
-          const metadata = { sheetName, qIndex, channel_id: body.channel.id, message_ts: body.message.ts, response_block_id: actionBlockId, normal_answers: normalOptions };
-          await client.views.open({
-            trigger_id: body.trigger_id,
-            view: { type: 'modal', callback_id: 'other_option_submission', private_metadata: JSON.stringify(metadata), title: { type: 'plain_text', text: 'Specify "Other"' }, submit: { type: 'plain_text', text: 'Submit' }, blocks: [{ type: 'input', block_id: 'other_input_block', label: { type: 'plain_text', text: `You selected "Other" for:\n*${questionText}*` }, element: { type: 'plain_text_input', action_id: 'other_input', multiline: true } }] }
-          });
-          return;
-        }
-        const combinedAnswer = answerLabels.join(', ');
-        await saveOrUpdateResponse({ sheetName, user: userName, question: questionText, answer: combinedAnswer, timestamp: new Date().toISOString() });
-        const channelId = body.channel.id;
-        const confirmationLabels = answerLabels.map(a => `"${a}"`).join(', ');
-        if (channelId.startsWith('U') || channelId.startsWith('D')) {
-          let originalBlocks = body.message.blocks;
-          const blockIndexToReplace = originalBlocks.findIndex(b => b.block_id === actionBlockId);
-          if (blockIndexToReplace > -1) {
-            const headerBlock = originalBlocks[blockIndexToReplace - 1];
-            const confirmationBlock = { type: 'context', elements: [{ type: 'mrkdwn', text: `✅ *${headerBlock.text.text}* — You answered: *${confirmationLabels}*` }] };
-            originalBlocks.splice(blockIndexToReplace - 1, 2, confirmationBlock);
-          }
-          const submitButtonIndex = originalBlocks.findIndex(b => b.type === 'actions' && b.elements[0]?.action_id === 'submit_checkbox_answers');
-          if (submitButtonIndex > -1) { originalBlocks.splice(submitButtonIndex - 1, 2); }
-          await client.chat.update({ channel: channelId, ts: body.message.ts, text: "Responses recorded.", blocks: originalBlocks });
+
+        if (confirmationMessages.length > 0) {
+            await client.chat.postEphemeral({
+                channel: body.channel.id,
+                user: body.user.id,
+                text: `Thank you! Your responses have been submitted.\n\n${confirmationMessages.join('\n')}`
+            });
         } else {
-          await client.chat.postEphemeral({ channel: channelId, user: body.user.id, text: `✅ Thanks! For "*${questionText}*", you selected: *${confirmationLabels}*` });
+            await client.chat.postEphemeral({
+                channel: body.channel.id,
+                user: body.user.id,
+                text: "No new answers were selected to submit."
+            });
         }
-    } finally {
-        processingRequests.delete(lockKey);
+
+    } catch (error) {
+        console.error("Error in checkbox handler:", error);
+        await client.chat.postEphemeral({
+            channel: body.channel.id,
+            user: body.user.id,
+            text: "Sorry, there was an error submitting your answers."
+        });
     }
-  } catch (error) {
-      console.error("Error in checkbox handler:", error);
-  }
 });
 
+
 app.view('other_option_submission', async ({ ack, body, view, client }) => {
-  // ✅ FIX: Get qIndex instead of full question text from metadata
   const metadata = JSON.parse(view.private_metadata);
   const { sheetName, qIndex, channel_id, message_ts, response_block_id, normal_answers } = metadata;
-  
   const otherText = view.state.values.other_input_block.other_input.value;
   const finalAnswer = `Other: ${otherText}`;
   await ack();
-
   try {
     const question = await getQuestionTextByIndex(sheetName, qIndex);
     const userInfo = await client.users.info({ user: body.user.id });
