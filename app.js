@@ -1,31 +1,3 @@
-Of course. This is happening because your app's "Submit All My Answers" button logic is only designed to find and process the *first* checkbox question it encounters, ignoring any others.
-
------
-
-## 🧐 The Problem
-
-In your `app.js` file, the `submit_checkbox_answers` action handler gets the state of all interactive components in the message via `body.state.values`. However, it then immediately grabs the key of the very first component (`Object.keys(checkboxStates)[0]`) and processes only that one, ending its work without looking for other checkbox questions.
-
------
-
-## ✅ The Solution
-
-The handler must be rewritten to **loop through all question states** sent by Slack. For each one, it will find the question's index, look up the question text, and save the corresponding answers to your Google Sheet.
-
-This involves two small changes in `app.js`:
-
-1.  **In `poll_submission`:** The "Submit" button's `value` no longer needs a question index, just the `sheetName`.
-2.  **In `submit_checkbox_answers`:** The entire function will be replaced with a new version that iterates correctly.
-
-No changes are needed in `sheets.js`.
-
------
-
-## Corrected `app.js`
-
-Here is the complete, updated `app.js` file with the necessary corrections.
-
-```javascript
 const { App, ExpressReceiver } = require('@slack/bolt');
 const {
   createNewSheet,
