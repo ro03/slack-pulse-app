@@ -1,4 +1,4 @@
-// sheets.js - FINAL VERSION for Hosting
+// sheets.js
 
 const { google } = require('googleapis');
 
@@ -72,7 +72,6 @@ async function checkIfAnswered({ user, question }) {
   }
 }
 
-// Export both functions so they can be used in app.js
 module.exports = {
   saveResponseToSheet,
   checkIfAnswered,
