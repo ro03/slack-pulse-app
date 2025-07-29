@@ -9,7 +9,14 @@ const USER_GROUPS_SHEET_NAME = 'UserGroups';
 
 // Helper function to get an authenticated Google Sheets client
 const authorize = () => {
-  const credentials = JSON.parse(process.env.GOOGLE_SHEETS_CREDENTIALS);
+  const credentialsJson = process.env.GOOGLE_SHEETS_CREDENTIALS;
+
+  // 🚨 ADD THIS CHECK
+  if (!credentialsJson) {
+    throw new Error('FATAL: GOOGLE_SHEETS_CREDENTIALS environment variable is not set.');
+  }
+
+  const credentials = JSON.parse(credentialsJson);
   const auth = new google.auth.GoogleAuth({
     credentials,
     scopes: ['https://www.googleapis.com/auth/spreadsheets'],
@@ -50,8 +57,6 @@ const getAllUserGroups = async () => {
             spreadsheetId: SHEET_ID,
             range: `${USER_GROUPS_SHEET_NAME}!A2:C`, // A2 to skip header
         });
-
-        console.log('[DEBUG] Raw response from Google Sheets API:', JSON.stringify(res.data, null, 2));
 
         const rows = res.data.values || [];
         const groups = rows.map(row => ({ GroupName: row[0], CreatorID: row[1], MemberIDs: row[2] }));
