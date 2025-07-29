@@ -140,6 +140,7 @@ app.action('add_question_button', async ({ ack, body, client, action }) => {
 });
 
 // This listener handles the submission of the modal form
+// This listener handles the submission of the modal form
 app.view('poll_submission', async ({ ack, body, view, client }) => {
     await ack();
     const values = view.state.values;
@@ -166,6 +167,7 @@ app.view('poll_submission', async ({ ack, body, view, client }) => {
         }
     }
 
+    // Build the message blocks
     for (const [questionIndex, questionData] of parsedQuestions.entries()) {
         allBlocks.push({ type: 'header', text: { type: 'plain_text', text: questionData.questionText } });
         let responseBlock;
@@ -189,32 +191,34 @@ app.view('poll_submission', async ({ ack, body, view, client }) => {
         allBlocks.push({ type: 'divider' }, { type: 'actions', elements: [{ type: 'button', text: { type: 'plain_text', text: 'Submit All My Answers' }, style: 'primary', action_id: 'submit_checkbox_answers' }] });
     }
 
+    // Loop through destinations and send the message
     for (const conversationId of conversationIds) {
-    try {
-        await client.chat.postMessage({
-            channel: conversationId,
-            text: 'You have a new survey to complete!',
-            blocks: allBlocks,
-            unfurl_links: true,
-            unfurl_media: true
-        });
-        if (conversationId.startsWith('C')) {
-            await client.conversations.join({ channel: conversationId });
-        }
-    } catch (error) {
-        console.error(`Failed to send survey to ${conversationId}`, error);
-
-        // ADD THIS BLOCK FOR BETTER ERROR FEEDBACK
         try {
             await client.chat.postMessage({
-                channel: body.user.id, // This sends a DM to the user who created the survey
-                text: `I'm sorry, I ran into an error when trying to send the survey to <#${conversationId}>. Please check the server logs for details.\n\n*Error:* \`${error.data.error}\``
+                channel: conversationId,
+                text: 'You have a new survey to complete!',
+                blocks: allBlocks,
+                unfurl_links: true,
+                unfurl_media: true
             });
-        } catch (dmError) {
-            console.error('Failed to send the error DM to the user:', dmError);
+            if (conversationId.startsWith('C')) {
+                await client.conversations.join({ channel: conversationId });
+            }
+        } catch (error) {
+            console.error(`Failed to send survey to ${conversationId}:`, error);
+
+            // Enhanced error feedback DM to the user who submitted the form
+            try {
+                await client.chat.postMessage({
+                    channel: body.user.id,
+                    text: `I'm sorry, I ran into an error when trying to send the survey to <#${conversationId}>. Please check the server logs for details.\n\n*Error:* \`${error.data?.error || 'Unknown error'}\``
+                });
+            } catch (dmError) {
+                console.error('Failed to send the error DM to the user:', dmError);
+            }
         }
     }
-}
+});
 
 // Listener for buttons and dropdowns with "Other" logic
 app.action(/^poll_response_.+$/, async ({ ack, body, client, action }) => {
