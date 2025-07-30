@@ -30,7 +30,7 @@ receiver.app.get('/api/slack/callback', async (req, res) => {
  }
 });
 
-// --- Modal Generation ---
+// --- Modal Generation Function ---
 const generateModalBlocks = (questionCount = 1, userGroups = []) => {
  let blocks = [];
  blocks.push({ type: 'header', text: { type: 'plain_text', text: 'Survey Introduction (Optional)' } }, { type: 'input', block_id: 'intro_message_block', optional: true, label: { type: 'plain_text', text: 'Introductory Message' }, element: { type: 'plain_text_input', multiline: true, action_id: 'intro_message_input' } }, { type: 'input', block_id: 'image_url_block', optional: true, label: { type: 'plain_text', text: 'Image or GIF URL' }, element: { type: 'plain_text_input', action_id: 'image_url_input', placeholder: { type: 'plain_text', text: 'https://example.com/image.gif' } } }, { type: 'input', block_id: 'video_url_block', optional: true, label: { type: 'plain_text', text: 'YouTube or Vimeo Video URL' }, element: { type: 'plain_text_input', action_id: 'video_url_input', placeholder: { type: 'plain_text', text: 'https://www.youtube.com/watch?v=...' } } });
@@ -142,45 +142,122 @@ app.action('create_group_button', async ({ ack, body, client }) => {
     } catch (error) { console.error(error); }
 });
 
-app.action(/^poll_response_.+$/, async ({ ack, body, client, action }) => {
-    await ack();
-    
-    if (action.type !== 'button' && action.type !== 'static_select') return;
-    
-    const payload = JSON.parse(action.type === 'button' ? action.value : action.selected_option.value);
-    
-    try {
-        const question = await getQuestionTextByIndex(payload.sheetName, payload.qIndex);
-        const userInfo = await client.users.info({ user: body.user.id });
-        const userName = userInfo.user.profile.real_name || userInfo.user.name;
-        const alreadyAnswered = await checkIfAnswered({ sheetName: payload.sheetName, user: userName, question });
+app.action(/^poll_response_.+$/, ({ ack, body, client, action }) => {
+    ack(); // Acknowledge immediately
+    (async () => {
+        if (action.type !== 'button' && action.type !== 'static_select') return;
+        const payload = JSON.parse(action.type === 'button' ? action.value : action.selected_option.value);
+        
+        try {
+            const question = await getQuestionTextByIndex(payload.sheetName, payload.qIndex);
+            const userInfo = await client.users.info({ user: body.user.id });
+            const userName = userInfo.user.profile.real_name || userInfo.user.name;
+            const alreadyAnswered = await checkIfAnswered({ sheetName: payload.sheetName, user: userName, question });
 
-        if (alreadyAnswered) {
-            await client.chat.postEphemeral({ channel: body.channel.id, user: body.user.id, text: "You've already answered this question." });
-            return;
-        }
-
-        await client.views.open({
-            trigger_id: body.trigger_id,
-            view: {
-                type: 'modal',
-                callback_id: 'confirm_answer_submission',
-                private_metadata: JSON.stringify(payload), 
-                title: { type: 'plain_text', text: 'Confirm Your Answer' },
-                submit: { type: 'plain_text', text: 'Confirm' },
-                close: { type: 'plain_text', text: 'Cancel' },
-                blocks: [
-                    { type: 'section', text: { type: 'mrkdwn', text: `You selected an answer for:\n*${question}*` } },
-                    { type: 'section', text: { type: 'mrkdwn', text: `Your answer:\n>*${payload.label}*` } },
-                    { type: 'section', text: { type: 'mrkdwn', text: 'Are you sure you want to submit this answer?' } }
-                ]
+            if (alreadyAnswered) {
+                await client.chat.postEphemeral({ channel: body.channel.id, user: body.user.id, text: "You've already answered this question." });
+                return;
             }
-        });
-    } catch (error) { console.error("Error in poll_response handler:", error); }
+
+            await client.views.open({
+                trigger_id: body.trigger_id,
+                view: {
+                    type: 'modal',
+                    callback_id: 'confirm_answer_submission',
+                    private_metadata: JSON.stringify(payload), 
+                    title: { type: 'plain_text', text: 'Confirm Your Answer' },
+                    submit: { type: 'plain_text', text: 'Confirm' },
+                    close: { type: 'plain_text', text: 'Cancel' },
+                    blocks: [
+                        { type: 'section', text: { type: 'mrkdwn', text: `You selected an answer for:\n*${question}*` } },
+                        { type: 'section', text: { type: 'mrkdwn', text: `Your answer:\n>*${payload.label}*` } },
+                        { type: 'section', text: { type: 'mrkdwn', text: 'Are you sure you want to submit this answer?' } }
+                    ]
+                }
+            });
+        } catch (error) { console.error("Error in poll_response handler:", error); }
+    })();
 });
 
-app.action('submit_checkbox_answers', async ({ ack, body, client, action }) => { /* ... (code from previous working version) ... */ });
-app.action('open_ended_answer_modal', async ({ ack, body, client, action }) => { /* ... (code from previous working version) ... */ });
+app.action('submit_checkbox_answers', ({ ack, body, client, action }) => {
+    ack(); // Acknowledge immediately
+    (async () => {
+        const { sheetName } = JSON.parse(action.value);
+        const checkboxStates = body.state.values;
+
+        try {
+            const userInfo = await client.users.info({ user: body.user.id });
+            const userName = userInfo.user.profile.real_name || userInfo.user.name;
+            const confirmationMessages = [];
+
+            for (const blockId in checkboxStates) {
+                const actionId = Object.keys(checkboxStates[blockId])[0];
+                const selectedOptions = checkboxStates[blockId][actionId].selected_options;
+
+                if (selectedOptions.length === 0) continue;
+
+                const { qIndex } = JSON.parse(selectedOptions[0].value);
+                const questionText = await getQuestionTextByIndex(sheetName, qIndex);
+                
+                const alreadyAnswered = await checkIfAnswered({ sheetName, user: userName, question: questionText });
+                if (alreadyAnswered) {
+                    confirmationMessages.push(`⏩ Skipped "*${questionText}*" (already answered).`);
+                    continue;
+                }
+
+                const answerLabels = selectedOptions.map(opt => JSON.parse(opt.value).label);
+                const combinedAnswer = answerLabels.join(', ');
+
+                await saveOrUpdateResponse({ sheetName, user: userName, question: questionText, answer: combinedAnswer, timestamp: new Date().toISOString() });
+                
+                const friendlyAnswers = answerLabels.map(a => `"${a}"`).join(', ');
+                confirmationMessages.push(`✅ For "*${questionText}*", you answered: ${friendlyAnswers}`);
+            }
+
+            if (confirmationMessages.length > 0) {
+                await client.chat.postEphemeral({ channel: body.channel.id, user: body.user.id, text: `Thank you! Your responses have been submitted.\n\n${confirmationMessages.join('\n')}` });
+            } else {
+                await client.chat.postEphemeral({ channel: body.channel.id, user: body.user.id, text: "No new answers were selected to submit." });
+            }
+        } catch (error) {
+            console.error("Error in checkbox handler:", error);
+            await client.chat.postEphemeral({ channel: body.channel.id, user: body.user.id, text: "Sorry, there was an error submitting your answers." });
+        }
+    })();
+});
+
+app.action('open_ended_answer_modal', ({ ack, body, client, action }) => {
+    ack(); // Acknowledge immediately
+    (async () => {
+        try {
+            const { sheetName, qIndex } = JSON.parse(action.value);
+            const question = await getQuestionTextByIndex(sheetName, qIndex);
+            const userInfo = await client.users.info({ user: body.user.id });
+            const userName = userInfo.user.profile.real_name || userInfo.user.name;
+
+            const alreadyAnswered = await checkIfAnswered({ sheetName, user: userName, question });
+            if (alreadyAnswered) {
+                await client.chat.postEphemeral({ channel: body.channel.id, user: body.user.id, text: "You've already answered this question." });
+                return;
+            }
+
+            await client.views.open({
+                trigger_id: body.trigger_id,
+                view: {
+                    type: 'modal',
+                    callback_id: 'open_ended_submission',
+                    private_metadata: JSON.stringify({ sheetName, qIndex, channel_id: body.channel.id }),
+                    title: { type: 'plain_text', text: 'Your Answer' },
+                    submit: { type: 'plain_text', text: 'Submit' },
+                    blocks: [
+                        { type: 'section', text: { type: 'mrkdwn', text: `*Question:*\n>${question}` } },
+                        { type: 'input', block_id: 'open_ended_input_block', label: { type: 'plain_text', text: 'Please type your response below:' }, element: { type: 'plain_text_input', action_id: 'open_ended_input', multiline: true } }
+                    ]
+                }
+            });
+        } catch (error) { console.error("Error opening open-ended modal:", error); }
+    })();
+});
 
 
 // --- View Submission Handlers ---
@@ -357,7 +434,39 @@ app.view('confirm_answer_submission', async ({ ack, body, view, client }) => {
     }
 });
 
-app.view('open_ended_submission', async ({ ack, body, view, client }) => { /* ... (code from previous working version) ... */ });
+app.view('open_ended_submission', async ({ ack, body, view, client }) => {
+    await ack();
+    try {
+        const metadata = JSON.parse(view.private_metadata);
+        const { sheetName, qIndex, channel_id } = metadata;
+        const answerText = view.state.values.open_ended_input_block.open_ended_input.value;
+
+        const question = await getQuestionTextByIndex(sheetName, qIndex);
+        const userInfo = await client.users.info({ user: body.user.id });
+        const userName = userInfo.user.profile.real_name || userInfo.user.name;
+
+        await saveOrUpdateResponse({
+            sheetName,
+            user: userName,
+            question,
+            answer: answerText,
+            timestamp: new Date().toISOString()
+        });
+        
+        await client.chat.postEphemeral({
+            channel: channel_id,
+            user: body.user.id,
+            text: `✅ Thanks! For "*${question}*", we've recorded your answer.`
+        });
+    } catch (error) {
+        console.error("Error saving open-ended response:", error);
+        await client.chat.postEphemeral({
+            channel: JSON.parse(view.private_metadata).channel_id,
+            user: body.user.id,
+            text: "Sorry, there was an error submitting your answer."
+        });
+    }
+});
 
 // --- Start the App ---
 (async () => {
