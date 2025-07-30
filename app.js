@@ -6,8 +6,8 @@ const {
  saveUserGroup,
  getAllUserGroups,
  getGroupMembers,
+ getQuestionTextByIndex, // Make sure this is imported
 } = require('./sheets');
-const { google } = require('googleapis');
 
 const processingRequests = new Set();
 
@@ -29,7 +29,6 @@ receiver.app.get('/api/slack/callback', async (req, res) => {
  }
 });
 
-// 💡 CHANGE: Added new question types to the dropdown
 const generateModalBlocks = (questionCount = 1, userGroups = []) => {
  let blocks = [];
  blocks.push({ type: 'header', text: { type: 'plain_text', text: 'Survey Introduction (Optional)' } }, { type: 'input', block_id: 'intro_message_block', optional: true, label: { type: 'plain_text', text: 'Introductory Message' }, element: { type: 'plain_text_input', multiline: true, action_id: 'intro_message_input' } }, { type: 'input', block_id: 'image_url_block', optional: true, label: { type: 'plain_text', text: 'Image or GIF URL' }, element: { type: 'plain_text_input', action_id: 'image_url_input', placeholder: { type: 'plain_text', text: 'https://example.com/image.gif' } } }, { type: 'input', block_id: 'video_url_block', optional: true, label: { type: 'plain_text', text: 'YouTube or Vimeo Video URL' }, element: { type: 'plain_text_input', action_id: 'video_url_input', placeholder: { type: 'plain_text', text: 'https://www.youtube.com/watch?v=...' } } });
@@ -63,7 +62,6 @@ const generateModalBlocks = (questionCount = 1, userGroups = []) => {
  return blocks;
 };
 
-// 💡 ADDITION: Restrict command usage to an allowlist of user IDs
 app.command('/ask', async ({ ack, body, client }) => {
     const allowedUsers = (process.env.ALLOWED_USER_IDS || '').split(',');
     if (process.env.ALLOWED_USER_IDS && !allowedUsers.includes(body.user_id)) {
@@ -105,7 +103,6 @@ app.action('add_question_button', async ({ ack, body, client, action }) => {
    }
 });
 
-// 💡 CHANGE: Major updates to handle all new question types
 app.view('poll_submission', async ({ ack, body, view, client }) => {
    const values = view.state.values;
    const user = body.user.id;
@@ -137,20 +134,18 @@ app.view('poll_submission', async ({ ack, body, view, client }) => {
 
            if (questionText) {
                 let options = [];
-                // Generate options for formats that don't use user input
                 switch (pollFormat) {
                     case '1-to-5': options = ['1', '2', '3', '4', '5']; break;
                     case '1-to-10': options = Array.from({ length: 10 }, (_, i) => (i + 1).toString()); break;
                     case 'agree-disagree': options = ['Strongly Disagree', 'Disagree', 'Neutral', 'Agree', 'Strongly Agree']; break;
                     case 'nps': options = Array.from({ length: 11 }, (_, i) => i.toString()); break;
-                    default: // For buttons, dropdown, checkboxes
+                    default:
                         const optionsText = values[`options_block_${qIndex}`][`options_input_${qIndex}`]?.value || '';
                         options = optionsText.split('\n').filter(opt => opt.trim() !== '');
                 }
                 
-                // For types that require options, make sure they exist
                 if (['buttons', 'dropdown', 'checkboxes'].includes(pollFormat) && options.length === 0) {
-                    continue; // Skip question if no options provided
+                    continue;
                 }
                 
                parsedQuestions.push({ questionText, options, pollFormat });
@@ -166,7 +161,6 @@ app.view('poll_submission', async ({ ack, body, view, client }) => {
        if (videoUrl) { allBlocks.push({ type: 'section', text: { type: 'mrkdwn', text: `▶️ <${videoUrl}>` } }); }
 
        if (parsedQuestions.length === 0) {
-           // Handle message-only posts (no questions)
            if (allBlocks.length > 0) {
             const fallbackText = introMessage ? `You have a new message: ${introMessage.substring(0, 50)}...` : 'You have a new message!';
             for (const conversationId of conversationIds) {
@@ -178,14 +172,12 @@ app.view('poll_submission', async ({ ack, body, view, client }) => {
            return;
        } 
         
-       // --- Start Survey Processing ---
        const userInfo = await client.users.info({ user });
        const creatorName = userInfo.user.profile.real_name || userInfo.user.name;
        const questionTexts = parsedQuestions.map(q => q.questionText);
        const firstQuestion = parsedQuestions[0].questionText.substring(0, 50).replace(/[/\\?%*:|"<>]/g, '');
        const sheetName = `Survey - ${firstQuestion} - ${Date.now()}`;
 
-       // 💡 CHANGE: Pass creatorName to be stored in the sheet
        const sheetCreated = await createNewSheet(sheetName, creatorName, questionTexts);
        if (!sheetCreated) {
            await client.chat.postEphemeral({ user, channel: user, text: "There was an error creating a new Google Sheet." });
@@ -209,7 +201,6 @@ app.view('poll_submission', async ({ ack, body, view, client }) => {
                         elements: [{
                             type: 'button',
                             text: { type: 'plain_text', text: '✍️ Answer Question' },
-                            // 💡 ADDITION: Use a specific action_id for open-ended questions
                             action_id: `open_ended_answer_modal`,
                             value: JSON.stringify({ sheetName, qIndex: questionIndex })
                         }]
@@ -248,9 +239,6 @@ app.view('poll_submission', async ({ ack, body, view, client }) => {
    }
 });
 
-// ... (Unchanged group management handlers) ...
-
-// 💡 ADDITION: New action handler to open a modal for an open-ended question
 app.action('open_ended_answer_modal', async ({ ack, body, client, action }) => {
     await ack();
     try {
@@ -260,7 +248,6 @@ app.action('open_ended_answer_modal', async ({ ack, body, client, action }) => {
         const userInfo = await client.users.info({ user: body.user.id });
         const userName = userInfo.user.profile.real_name || userInfo.user.name;
 
-        // Check if user already answered this specific question
         const alreadyAnswered = await checkIfAnswered({ sheetName, user: userName, question });
         if (alreadyAnswered) {
             await client.chat.postEphemeral({
@@ -283,7 +270,7 @@ app.action('open_ended_answer_modal', async ({ ack, body, client, action }) => {
             trigger_id: body.trigger_id,
             view: {
                 type: 'modal',
-                callback_id: 'open_ended_submission', // New callback_id
+                callback_id: 'open_ended_submission',
                 private_metadata: JSON.stringify(metadata),
                 title: { type: 'plain_text', text: 'Your Answer' },
                 submit: { type: 'plain_text', text: 'Submit' },
@@ -310,12 +297,11 @@ app.action('open_ended_answer_modal', async ({ ack, body, client, action }) => {
     }
 });
 
-// 💡 ADDITION: New view handler to process and save the open-ended answer
 app.view('open_ended_submission', async ({ ack, body, view, client }) => {
     await ack();
     try {
         const metadata = JSON.parse(view.private_metadata);
-        const { sheetName, qIndex, channel_id, message_ts, response_block_id } = metadata;
+        const { sheetName, qIndex, channel_id } = metadata;
         const answerText = view.state.values.open_ended_input_block.open_ended_input.value;
 
         const question = await getQuestionTextByIndex(sheetName, qIndex);
@@ -330,7 +316,6 @@ app.view('open_ended_submission', async ({ ack, body, view, client }) => {
             timestamp: new Date().toISOString()
         });
         
-        // Post confirmation
         await client.chat.postEphemeral({
             channel: channel_id,
             user: body.user.id,
@@ -339,7 +324,6 @@ app.view('open_ended_submission', async ({ ack, body, view, client }) => {
 
     } catch (error) {
         console.error("Error saving open-ended response:", error);
-        // Let user know something went wrong
         await client.chat.postEphemeral({
             channel: JSON.parse(view.private_metadata).channel_id,
             user: body.user.id,
@@ -348,7 +332,8 @@ app.view('open_ended_submission', async ({ ack, body, view, client }) => {
     }
 });
 
-// ... (Other handlers like poll_response, submit_checkbox_answers, etc., remain largely unchanged) ...
+// Other handlers like poll_response, submit_checkbox_answers, etc. go here...
+// Make sure to include all of them from your original file.
 
 (async () => {
  await app.start(process.env.PORT || 3000);
