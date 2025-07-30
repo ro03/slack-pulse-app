@@ -25,9 +25,57 @@ const getSheetsClient = async () => {
  return google.sheets({ version: 'v4', auth: authClient });
 };
 
-// ... (Unchanged group management functions: saveUserGroup, getAllUserGroups, getGroupMembers) ...
+// --- Group Management Functions (FIX: Re-added) ---
 
-// 💡 CHANGE: Add creator name to the sheet and adjust header row
+const saveUserGroup = async ({ groupName, creatorId, memberIds }) => {
+ try {
+   const sheets = await getSheetsClient();
+   await sheets.spreadsheets.values.append({
+     spreadsheetId: SHEET_ID,
+     range: `${USER_GROUPS_SHEET_NAME}!A:C`,
+     valueInputOption: 'USER_ENTERED',
+     resource: {
+       values: [[groupName, creatorId, memberIds]],
+     },
+   });
+   return true;
+ } catch (error) {
+   console.error('Error saving user group to sheet:', error);
+   return false;
+ }
+};
+
+const getAllUserGroups = async () => {
+   try {
+       const sheets = await getSheetsClient();
+       const res = await sheets.spreadsheets.values.get({
+           spreadsheetId: SHEET_ID,
+           range: `${USER_GROUPS_SHEET_NAME}!A2:C`, // A2 to skip header
+       });
+
+       const rows = res.data.values || [];
+       const groups = rows.map(row => ({ GroupName: row[0], CreatorID: row[1], MemberIDs: row[2] }));
+       return groups;
+   } catch (error) {
+       console.error('Error fetching all user groups:', error);
+       return [];
+   }
+};
+
+const getGroupMembers = async (groupName) => {
+ try {
+   const allGroups = await getAllUserGroups();
+   const group = allGroups.find(g => g.GroupName === groupName);
+   return group ? group.MemberIDs.split(',') : [];
+ } catch (error) {
+   console.error(`Error fetching members for group ${groupName}:`, error);
+   return [];
+ }
+};
+
+
+// --- Survey Response Functions ---
+
 const createNewSheet = async (sheetName, creatorName, questionHeaders) => {
  try {
    const sheets = await getSheetsClient();
@@ -36,7 +84,6 @@ const createNewSheet = async (sheetName, creatorName, questionHeaders) => {
      resource: { requests: [{ addSheet: { properties: { title: sheetName } } }] },
    });
 
-   // Write creator info to row 1 and headers to row 2
    const values = [
        ['Survey Creator:', creatorName],
        ['User', 'Timestamp', ...questionHeaders]
@@ -44,7 +91,7 @@ const createNewSheet = async (sheetName, creatorName, questionHeaders) => {
 
    await sheets.spreadsheets.values.update({
      spreadsheetId: SHEET_ID,
-     range: `${sheetName}!A1`, // Start writing at A1
+     range: `${sheetName}!A1`,
      valueInputOption: 'USER_ENTERED',
      resource: { values },
    });
@@ -56,23 +103,19 @@ const createNewSheet = async (sheetName, creatorName, questionHeaders) => {
  }
 };
 
-// 💡 CHANGE: Adjust row indexing to account for new header structure
 const saveOrUpdateResponse = async ({ sheetName, user, question, answer, timestamp }) => {
  try {
    const sheets = await getSheetsClient();
-   // Headers are now on row 2
    const headerRes = await sheets.spreadsheets.values.get({ spreadsheetId: SHEET_ID, range: `${sheetName}!2:2` });
    const headers = headerRes.data.values[0];
    const questionIndex = headers.indexOf(question);
-   if (questionIndex < 2) return; // Not found or protected column
+   if (questionIndex < 2) return;
 
-   // User data starts from row 3
    const userRes = await sheets.spreadsheets.values.get({ spreadsheetId: SHEET_ID, range: `${sheetName}!A3:A` });
    const users = userRes.data.values ? userRes.data.values.flat() : [];
-   const userRowIndex = users.indexOf(user); // This is a 0-based index of the *data* rows
+   const userRowIndex = users.indexOf(user);
 
-   if (userRowIndex > -1) { // User exists, update row
-     // The actual sheet row is the data index + 3 (for 2 header rows and 1-based indexing)
+   if (userRowIndex > -1) {
      const sheetRowNumber = userRowIndex + 3;
      await sheets.spreadsheets.values.update({
        spreadsheetId: SHEET_ID,
@@ -80,14 +123,14 @@ const saveOrUpdateResponse = async ({ sheetName, user, question, answer, timesta
        valueInputOption: 'USER_ENTERED',
        resource: { values: [[answer]] },
      });
-   } else { // New user, append row
+   } else {
      const newRow = new Array(headers.length).fill('');
      newRow[0] = user;
      newRow[1] = timestamp;
      newRow[questionIndex] = answer;
      await sheets.spreadsheets.values.append({
        spreadsheetId: SHEET_ID,
-       range: `${sheetName}!A:A`, // Append will find the next empty row automatically
+       range: `${sheetName}!A:A`,
        valueInputOption: 'USER_ENTERED',
        resource: { values: [newRow] },
      });
@@ -97,25 +140,21 @@ const saveOrUpdateResponse = async ({ sheetName, user, question, answer, timesta
  }
 };
 
-// 💡 CHANGE: Adjust row indexing to account for new header structure
 const checkIfAnswered = async ({ sheetName, user, question }) => {
  try {
    const sheets = await getSheetsClient();
-   // Headers are now on row 2
    const headerRes = await sheets.spreadsheets.values.get({ spreadsheetId: SHEET_ID, range: `${sheetName}!2:2` });
    if (!headerRes.data.values) return false;
    const headers = headerRes.data.values[0];
    const questionIndex = headers.indexOf(question);
    if (questionIndex < 2) return false;
 
-   // User data starts from row 3
    const userRes = await sheets.spreadsheets.values.get({ spreadsheetId: SHEET_ID, range: `${sheetName}!A3:A` });
    if (!userRes.data.values) return false;
    const users = userRes.data.values.flat();
    const userRowIndex = users.indexOf(user);
 
    if (userRowIndex > -1) {
-     // Actual sheet row is data index + 3
      const sheetRowNumber = userRowIndex + 3;
      const cellValueRes = await sheets.spreadsheets.values.get({
        spreadsheetId: SHEET_ID,
@@ -130,20 +169,17 @@ const checkIfAnswered = async ({ sheetName, user, question }) => {
  }
 };
 
-// This function is called from the main index.js file
-// 💡 CHANGE: Adjust header row to read from row 2
 async function getQuestionTextByIndex(sheetName, qIndex) {
     const sheets = await getSheetsClient();
     const headerRes = await sheets.spreadsheets.values.get({ 
         spreadsheetId: SHEET_ID,
-        // The data headers are on the second row
         range: `${sheetName}!2:2` 
     });
     const headers = headerRes.data.values[0];
-    // Column C is index 2. qIndex starts at 0. So question 1 (qIndex 0) is at headers[0+2].
     return headers[qIndex + 2];
 }
 
+// FIX: All exported functions are now defined in this file.
 module.exports = {
  createNewSheet,
  saveOrUpdateResponse,
@@ -151,5 +187,5 @@ module.exports = {
  saveUserGroup,
  getAllUserGroups,
  getGroupMembers,
- getQuestionTextByIndex, // Make sure to export this if it's not already
+ getQuestionTextByIndex,
 };
