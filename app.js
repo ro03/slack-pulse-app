@@ -6,7 +6,7 @@ const {
  saveUserGroup,
  getAllUserGroups,
  getGroupMembers,
- getQuestionTextByIndex, // Make sure this is imported
+ getQuestionTextByIndex,
 } = require('./sheets');
 
 const processingRequests = new Set();
@@ -62,6 +62,7 @@ const generateModalBlocks = (questionCount = 1, userGroups = []) => {
  return blocks;
 };
 
+// --- Main Survey Command ---
 app.command('/ask', async ({ ack, body, client }) => {
     const allowedUsers = (process.env.ALLOWED_USER_IDS || '').split(',');
     if (process.env.ALLOWED_USER_IDS && !allowedUsers.includes(body.user_id)) {
@@ -87,6 +88,7 @@ app.command('/ask', async ({ ack, body, client }) => {
    }
 });
 
+// --- Survey Creation and Submission Handlers ---
 app.action('add_question_button', async ({ ack, body, client, action }) => {
    await ack();
    try {
@@ -239,32 +241,205 @@ app.view('poll_submission', async ({ ack, body, view, client }) => {
    }
 });
 
+
+// --- Group Management Handlers (FIX: Re-added) ---
+app.command('/groups', async ({ ack, body, client }) => {
+    await ack();
+    try {
+        await client.views.open({
+            trigger_id: body.trigger_id,
+            view: {
+                type: 'modal',
+                callback_id: 'manage_groups_view',
+                title: { type: 'plain_text', text: 'Manage User Groups' },
+                blocks: [
+                    {
+                        type: 'section',
+                        text: { type: 'mrkdwn', text: 'Create a new group to easily send surveys to the same people.' }
+                    },
+                    {
+                        type: 'actions',
+                        elements: [
+                            {
+                                type: 'button',
+                                text: { type: 'plain_text', text: 'Create New Group' },
+                                style: 'primary',
+                                action_id: 'create_group_button'
+                            }
+                        ]
+                    }
+                ]
+            }
+        });
+    } catch (error) {
+        console.error(error);
+    }
+});
+
+app.action('create_group_button', async ({ ack, body, client }) => {
+    await ack();
+    try {
+        await client.views.push({
+            trigger_id: body.trigger_id,
+            view: {
+                type: 'modal',
+                callback_id: 'create_group_submission',
+                title: { type: 'plain_text', text: 'Create a New Group' },
+                submit: { type: 'plain_text', text: 'Save Group' },
+                blocks: [
+                    {
+                        type: 'input',
+                        block_id: 'group_name_block',
+                        label: { type: 'plain_text', text: 'Group Name' },
+                        element: {
+                            type: 'plain_text_input',
+                            action_id: 'group_name_input',
+                            placeholder: { type: 'plain_text', text: 'e.g., Engineering Team' }
+                        }
+                    },
+                    {
+                        type: 'input',
+                        block_id: 'group_members_block',
+                        label: { type: 'plain_text', text: 'Select Members' },
+                        element: {
+                            type: 'multi_users_select',
+                            action_id: 'group_members_select',
+                            placeholder: { type: 'plain_text', text: 'Select users' }
+                        }
+                    }
+                ]
+            }
+        });
+    } catch (error) {
+        console.error(error);
+    }
+});
+
+app.view('create_group_submission', async ({ ack, body, view, client }) => {
+    const groupName = view.state.values.group_name_block.group_name_input.value;
+    const memberIds = view.state.values.group_members_block.group_members_select.selected_users;
+    const creatorId = body.user.id;
+
+    if (!groupName || memberIds.length === 0) {
+        await ack({
+            response_action: 'errors',
+            errors: {
+                group_name_block: !groupName ? 'Group name cannot be empty.' : undefined,
+                group_members_block: memberIds.length === 0 ? 'Please select at least one member.' : undefined
+            }
+        });
+        return;
+    }
+
+    await ack();
+    try {
+        await saveUserGroup({ groupName: groupName, creatorId: creatorId, memberIds: memberIds.join(',') });
+        await client.chat.postEphemeral({
+            channel: creatorId,
+            user: creatorId,
+            text: `✅ Your new group "*${groupName}*" has been saved.`
+        });
+    } catch (error) {
+        console.error("Error saving group:", error);
+        await client.chat.postEphemeral({
+            channel: creatorId,
+            user: creatorId,
+            text: `❌ There was an error saving your group.`
+        });
+    }
+});
+
+
+// --- Survey Response Handlers ---
+app.action(/^poll_response_.+$/, async ({ ack, body, client, action }) => {
+    await ack();
+    if (action.type !== 'button' && action.type !== 'static_select') return;
+    const payload = JSON.parse(action.type === 'button' ? action.value : action.selected_option.value);
+    const { sheetName, label, qIndex } = payload;
+    try {
+        const question = await getQuestionTextByIndex(sheetName, qIndex);
+        const lockKey = `${body.user.id}:${sheetName}:${question}`;
+        if (processingRequests.has(lockKey)) { return; }
+        processingRequests.add(lockKey);
+        try {
+            const userInfo = await client.users.info({ user: body.user.id });
+            const userName = userInfo.user.profile.real_name || userInfo.user.name;
+            const alreadyAnswered = await checkIfAnswered({ sheetName, user: userName, question });
+            if (alreadyAnswered) {
+                await client.chat.postEphemeral({ channel: body.channel.id, user: body.user.id, text: "You've already answered this." });
+                return;
+            }
+            // Note: 'Other' button functionality would go here if needed.
+            await saveOrUpdateResponse({ sheetName, user: userName, question, answer: label, timestamp: new Date().toISOString() });
+            await client.chat.postEphemeral({ channel: body.channel.id, user: body.user.id, text: `✅ Thanks! For "*${question}*", you answered: *${label}*` });
+        } finally {
+            processingRequests.delete(lockKey);
+        }
+    } catch(error) {
+        console.error("Error in poll_response handler:", error);
+    }
+});
+
+app.action('submit_checkbox_answers', async ({ ack, body, client, action }) => {
+    await ack();
+    const { sheetName } = JSON.parse(action.value);
+    const checkboxStates = body.state.values;
+
+    try {
+        const userInfo = await client.users.info({ user: body.user.id });
+        const userName = userInfo.user.profile.real_name || userInfo.user.name;
+        const confirmationMessages = [];
+
+        for (const blockId in checkboxStates) {
+            const actionId = Object.keys(checkboxStates[blockId])[0];
+            const selectedOptions = checkboxStates[blockId][actionId].selected_options;
+
+            if (selectedOptions.length === 0) continue;
+
+            const { qIndex } = JSON.parse(selectedOptions[0].value);
+            const questionText = await getQuestionTextByIndex(sheetName, qIndex);
+            
+            const alreadyAnswered = await checkIfAnswered({ sheetName, user: userName, question: questionText });
+            if (alreadyAnswered) {
+                confirmationMessages.push(`⏩ Skipped "*${questionText}*" (already answered).`);
+                continue;
+            }
+
+            const answerLabels = selectedOptions.map(opt => JSON.parse(opt.value).label);
+            const combinedAnswer = answerLabels.join(', ');
+
+            await saveOrUpdateResponse({ sheetName, user: userName, question: questionText, answer: combinedAnswer, timestamp: new Date().toISOString() });
+            
+            const friendlyAnswers = answerLabels.map(a => `"${a}"`).join(', ');
+            confirmationMessages.push(`✅ For "*${questionText}*", you answered: ${friendlyAnswers}`);
+        }
+
+        if (confirmationMessages.length > 0) {
+            await client.chat.postEphemeral({ channel: body.channel.id, user: body.user.id, text: `Thank you! Your responses have been submitted.\n\n${confirmationMessages.join('\n')}` });
+        } else {
+            await client.chat.postEphemeral({ channel: body.channel.id, user: body.user.id, text: "No new answers were selected to submit." });
+        }
+    } catch (error) {
+        console.error("Error in checkbox handler:", error);
+        await client.chat.postEphemeral({ channel: body.channel.id, user: body.user.id, text: "Sorry, there was an error submitting your answers." });
+    }
+});
+
 app.action('open_ended_answer_modal', async ({ ack, body, client, action }) => {
     await ack();
     try {
         const { sheetName, qIndex } = JSON.parse(action.value);
         const question = await getQuestionTextByIndex(sheetName, qIndex);
-
         const userInfo = await client.users.info({ user: body.user.id });
         const userName = userInfo.user.profile.real_name || userInfo.user.name;
 
         const alreadyAnswered = await checkIfAnswered({ sheetName, user: userName, question });
         if (alreadyAnswered) {
-            await client.chat.postEphemeral({
-                channel: body.channel.id,
-                user: body.user.id,
-                text: "You've already answered this question."
-            });
+            await client.chat.postEphemeral({ channel: body.channel.id, user: body.user.id, text: "You've already answered this question." });
             return;
         }
 
-        const metadata = {
-            sheetName,
-            qIndex,
-            channel_id: body.channel.id,
-            message_ts: body.message.ts,
-            response_block_id: body.actions[0].block_id
-        };
+        const metadata = { sheetName, qIndex, channel_id: body.channel.id, message_ts: body.message.ts, response_block_id: body.actions[0].block_id };
 
         await client.views.open({
             trigger_id: body.trigger_id,
@@ -275,20 +450,8 @@ app.action('open_ended_answer_modal', async ({ ack, body, client, action }) => {
                 title: { type: 'plain_text', text: 'Your Answer' },
                 submit: { type: 'plain_text', text: 'Submit' },
                 blocks: [
-                    {
-                        type: 'section',
-                        text: { type: 'mrkdwn', text: `*Question:*\n>${question}` }
-                    },
-                    {
-                        type: 'input',
-                        block_id: 'open_ended_input_block',
-                        label: { type: 'plain_text', text: 'Please type your response below:' },
-                        element: {
-                            type: 'plain_text_input',
-                            action_id: 'open_ended_input',
-                            multiline: true
-                        }
-                    }
+                    { type: 'section', text: { type: 'mrkdwn', text: `*Question:*\n>${question}` } },
+                    { type: 'input', block_id: 'open_ended_input_block', label: { type: 'plain_text', text: 'Please type your response below:' }, element: { type: 'plain_text_input', action_id: 'open_ended_input', multiline: true } }
                 ]
             }
         });
@@ -308,33 +471,17 @@ app.view('open_ended_submission', async ({ ack, body, view, client }) => {
         const userInfo = await client.users.info({ user: body.user.id });
         const userName = userInfo.user.profile.real_name || userInfo.user.name;
 
-        await saveOrUpdateResponse({
-            sheetName,
-            user: userName,
-            question,
-            answer: answerText,
-            timestamp: new Date().toISOString()
-        });
+        await saveOrUpdateResponse({ sheetName, user: userName, question, answer: answerText, timestamp: new Date().toISOString() });
         
-        await client.chat.postEphemeral({
-            channel: channel_id,
-            user: body.user.id,
-            text: `✅ Thanks! For "*${question}*", we've recorded your answer.`
-        });
+        await client.chat.postEphemeral({ channel: channel_id, user: body.user.id, text: `✅ Thanks! For "*${question}*", we've recorded your answer.` });
 
     } catch (error) {
         console.error("Error saving open-ended response:", error);
-        await client.chat.postEphemeral({
-            channel: JSON.parse(view.private_metadata).channel_id,
-            user: body.user.id,
-            text: "Sorry, there was an error submitting your answer."
-        });
+        await client.chat.postEphemeral({ channel: JSON.parse(view.private_metadata).channel_id, user: body.user.id, text: "Sorry, there was an error submitting your answer." });
     }
 });
 
-// Other handlers like poll_response, submit_checkbox_answers, etc. go here...
-// Make sure to include all of them from your original file.
-
+// --- Start the App ---
 (async () => {
  await app.start(process.env.PORT || 3000);
  console.log('⚡️ Bolt app is running!');
