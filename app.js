@@ -15,6 +15,7 @@ if (process.env.NODE_ENV !== 'production') {
  require('dotenv').config();
 }
 
+// ... (No changes to the initial setup code)
 const receiver = new ExpressReceiver({ signingSecret: process.env.SLACK_SIGNING_SECRET });
 const app = new App({ token: process.env.SLACK_BOT_TOKEN, receiver: receiver });
 receiver.app.get('/', (req, res) => { res.status(200).send('App is up and running!'); });
@@ -28,7 +29,6 @@ receiver.app.get('/api/slack/callback', async (req, res) => {
    res.status(500).send('Something went wrong during installation.');
  }
 });
-
 const generateModalBlocks = (questionCount = 1, userGroups = []) => {
  let blocks = [];
  blocks.push({ type: 'header', text: { type: 'plain_text', text: 'Survey Introduction (Optional)' } }, { type: 'input', block_id: 'intro_message_block', optional: true, label: { type: 'plain_text', text: 'Introductory Message' }, element: { type: 'plain_text_input', multiline: true, action_id: 'intro_message_input' } }, { type: 'input', block_id: 'image_url_block', optional: true, label: { type: 'plain_text', text: 'Image or GIF URL' }, element: { type: 'plain_text_input', action_id: 'image_url_input', placeholder: { type: 'plain_text', text: 'https://example.com/image.gif' } } }, { type: 'input', block_id: 'video_url_block', optional: true, label: { type: 'plain_text', text: 'YouTube or Vimeo Video URL' }, element: { type: 'plain_text_input', action_id: 'video_url_input', placeholder: { type: 'plain_text', text: 'https://www.youtube.com/watch?v=...' } } });
@@ -61,8 +61,7 @@ const generateModalBlocks = (questionCount = 1, userGroups = []) => {
  blocks.push({ type: 'input', block_id: 'destinations_block', optional: true, label: { type: 'plain_text', text: 'Send survey to these users or channels' }, element: { type: 'multi_conversations_select', placeholder: { type: 'plain_text', text: 'Select users and/or channels' }, action_id: 'destinations_select', filter: { include: ["public", "private", "im"], exclude_bot_users: true } } });
  return blocks;
 };
-
-// --- Main Survey Command ---
+// ... (No changes to /ask command, poll_submission view, or /groups handlers)
 app.command('/ask', async ({ ack, body, client }) => {
     const allowedUsers = (process.env.ALLOWED_USER_IDS || '').split(',');
     if (process.env.ALLOWED_USER_IDS && !allowedUsers.includes(body.user_id)) {
@@ -87,8 +86,6 @@ app.command('/ask', async ({ ack, body, client }) => {
        await client.chat.postEphemeral({ user: body.user_id, channel: body.channel_id, text: "Sorry, there was an error opening the survey creator. Please check the logs.", });
    }
 });
-
-// --- Survey Creation and Submission Handlers ---
 app.action('add_question_button', async ({ ack, body, client, action }) => {
    await ack();
    try {
@@ -104,7 +101,6 @@ app.action('add_question_button', async ({ ack, body, client, action }) => {
        console.error("Failed to update view:", error);
    }
 });
-
 app.view('poll_submission', async ({ ack, body, view, client }) => {
    const values = view.state.values;
    const user = body.user.id;
@@ -240,9 +236,6 @@ app.view('poll_submission', async ({ ack, body, view, client }) => {
        console.error("Error processing poll submission:", error);
    }
 });
-
-
-// --- Group Management Handlers (FIX: Re-added) ---
 app.command('/groups', async ({ ack, body, client }) => {
     await ack();
     try {
@@ -275,7 +268,6 @@ app.command('/groups', async ({ ack, body, client }) => {
         console.error(error);
     }
 });
-
 app.action('create_group_button', async ({ ack, body, client }) => {
     await ack();
     try {
@@ -314,7 +306,6 @@ app.action('create_group_button', async ({ ack, body, client }) => {
         console.error(error);
     }
 });
-
 app.view('create_group_submission', async ({ ack, body, view, client }) => {
     const groupName = view.state.values.group_name_block.group_name_input.value;
     const memberIds = view.state.values.group_members_block.group_members_select.selected_users;
@@ -351,27 +342,73 @@ app.view('create_group_submission', async ({ ack, body, view, client }) => {
 
 
 // --- Survey Response Handlers ---
+
+// 💡 CHANGE: This handler now shows a confirmation pop-up modal
 app.action(/^poll_response_.+$/, async ({ ack, body, client, action }) => {
     await ack();
+    // This handler is for single-answer questions (buttons and dropdowns)
     if (action.type !== 'button' && action.type !== 'static_select') return;
+    
     const payload = JSON.parse(action.type === 'button' ? action.value : action.selected_option.value);
     const { sheetName, label, qIndex } = payload;
+    
     try {
         const question = await getQuestionTextByIndex(sheetName, qIndex);
         const lockKey = `${body.user.id}:${sheetName}:${question}`;
+        
         if (processingRequests.has(lockKey)) { return; }
         processingRequests.add(lockKey);
+
         try {
             const userInfo = await client.users.info({ user: body.user.id });
             const userName = userInfo.user.profile.real_name || userInfo.user.name;
             const alreadyAnswered = await checkIfAnswered({ sheetName, user: userName, question });
+
             if (alreadyAnswered) {
                 await client.chat.postEphemeral({ channel: body.channel.id, user: body.user.id, text: "You've already answered this." });
                 return;
             }
-            // Note: 'Other' button functionality would go here if needed.
+            
+            // Save the response to the Google Sheet
             await saveOrUpdateResponse({ sheetName, user: userName, question, answer: label, timestamp: new Date().toISOString() });
-            await client.chat.postEphemeral({ channel: body.channel.id, user: body.user.id, text: `✅ Thanks! For "*${question}*", you answered: *${label}*` });
+
+            // 💡 NEW: Open a confirmation modal instead of sending an ephemeral message
+            await client.views.open({
+                trigger_id: body.trigger_id,
+                view: {
+                    type: 'modal',
+                    title: {
+                        type: 'plain_text',
+                        text: 'Response Submitted'
+                    },
+                    close: {
+                        type: 'plain_text',
+                        text: 'Done'
+                    },
+                    blocks: [
+                        {
+                            "type": "section",
+                            "text": {
+                                "type": "mrkdwn",
+                                "text": "✅ *Thank you! Your response has been recorded successfully.*"
+                            }
+                        },
+                        {
+                            "type": "divider"
+                        },
+                        {
+                            "type": "context",
+                            "elements": [
+                                {
+                                    "type": "mrkdwn",
+                                    "text": `*Question:* ${question}\n*Your Answer:* ${label}`
+                                }
+                            ]
+                        }
+                    ]
+                }
+            });
+
         } finally {
             processingRequests.delete(lockKey);
         }
@@ -380,6 +417,7 @@ app.action(/^poll_response_.+$/, async ({ ack, body, client, action }) => {
     }
 });
 
+// This handler for checkboxes remains unchanged, as an ephemeral message is better for multi-question summaries.
 app.action('submit_checkbox_answers', async ({ ack, body, client, action }) => {
     await ack();
     const { sheetName } = JSON.parse(action.value);
@@ -425,6 +463,7 @@ app.action('submit_checkbox_answers', async ({ ack, body, client, action }) => {
     }
 });
 
+// This handler for open-ended questions remains unchanged.
 app.action('open_ended_answer_modal', async ({ ack, body, client, action }) => {
     await ack();
     try {
