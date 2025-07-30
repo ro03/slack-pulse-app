@@ -150,15 +150,7 @@ app.action(/^poll_response_.+$/, ({ ack, body, client, action }) => {
         
         try {
             const question = await getQuestionTextByIndex(payload.sheetName, payload.qIndex);
-            const userInfo = await client.users.info({ user: body.user.id });
-            const userName = userInfo.user.profile.real_name || userInfo.user.name;
-            const alreadyAnswered = await checkIfAnswered({ sheetName: payload.sheetName, user: userName, question });
-
-            if (alreadyAnswered) {
-                await client.chat.postEphemeral({ channel: body.channel.id, user: body.user.id, text: "You've already answered this question." });
-                return;
-            }
-
+            
             await client.views.open({
                 trigger_id: body.trigger_id,
                 view: {
@@ -232,15 +224,7 @@ app.action('open_ended_answer_modal', ({ ack, body, client, action }) => {
         try {
             const { sheetName, qIndex } = JSON.parse(action.value);
             const question = await getQuestionTextByIndex(sheetName, qIndex);
-            const userInfo = await client.users.info({ user: body.user.id });
-            const userName = userInfo.user.profile.real_name || userInfo.user.name;
-
-            const alreadyAnswered = await checkIfAnswered({ sheetName, user: userName, question });
-            if (alreadyAnswered) {
-                await client.chat.postEphemeral({ channel: body.channel.id, user: body.user.id, text: "You've already answered this question." });
-                return;
-            }
-
+            
             await client.views.open({
                 trigger_id: body.trigger_id,
                 view: {
@@ -321,7 +305,7 @@ app.view('poll_submission', async ({ ack, body, view, client }) => {
             for (const conversationId of conversationIds) {
                 try {
                     await client.chat.postMessage({ channel: conversationId, text: fallbackText, blocks: allBlocks, unfurl_links: true, unfurl_media: true });
-                } catch (error) { console.error(`Failed to send message-only post to ${conversationId}`, error); }
+                } catch (error) { console.error(`Failed to send survey to ${conversationId}`, error); }
             }
            }
            return;
@@ -410,6 +394,12 @@ app.view('confirm_answer_submission', async ({ ack, body, view, client }) => {
         const question = await getQuestionTextByIndex(sheetName, qIndex);
         const userInfo = await client.users.info({ user: user });
         const userName = userInfo.user.profile.real_name || userInfo.user.name;
+        
+        const alreadyAnswered = await checkIfAnswered({ sheetName, user: userName, question });
+        if (alreadyAnswered) {
+            await client.chat.postEphemeral({ channel: user, user: user, text: "You've already submitted an answer for this question." });
+            return;
+        }
 
         await saveOrUpdateResponse({
             sheetName,
@@ -444,6 +434,12 @@ app.view('open_ended_submission', async ({ ack, body, view, client }) => {
         const question = await getQuestionTextByIndex(sheetName, qIndex);
         const userInfo = await client.users.info({ user: body.user.id });
         const userName = userInfo.user.profile.real_name || userInfo.user.name;
+        
+        const alreadyAnswered = await checkIfAnswered({ sheetName, user: userName, question });
+        if (alreadyAnswered) {
+             await client.chat.postEphemeral({ channel: channel_id, user: body.user.id, text: "You've already submitted an answer for this question." });
+             return;
+        }
 
         await saveOrUpdateResponse({
             sheetName,
