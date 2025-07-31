@@ -46,7 +46,7 @@ const buildQuestionActions = (questionData, sheetName, questionIndex) => {
 
     switch (pollFormat) {
         case 'open-ended':
-            elements.push({ type: 'button', text: { type: 'plain_text', text: '✍️ Answer Question' }, action_id: `open_ended_answer_modal`, value: JSON.stringify({ sheetName, qIndex: questionIndex }) });
+            elements.push({ type: 'button', text: { type: 'plain_text', text: '✍️ Answer Question' }, action_id: 'open_ended_answer_modal', value: JSON.stringify({ sheetName, qIndex: questionIndex }) });
             break;
         case 'dropdown':
             elements.push({ type: 'static_select', placeholder: { type: 'plain_text', text: 'Choose an answer' }, action_id: baseActionId, options: questionOptions.map(label => ({ text: { type: 'plain_text', text: label }, value: valuePayload(label) })) });
@@ -213,31 +213,52 @@ app.action(/^(add|delete)_question_button$|^load_survey_template$/, async ({ ack
 });
 
 app.action('delete_template_button', async ({ ack, action }) => {
-    await deleteSurveyTemplate(action.value);
     await ack();
+    await deleteSurveyTemplate(action.value);
 });
 
 app.action(/^poll_response_.+$/, async ({ ack, body, client, action }) => {
     await ack();
-    const payload = JSON.parse(action.type === 'button' ? action.value : action.selected_option.value);
-    payload.messageTs = body.message.ts;
-    payload.channelId = body.channel.id;
-    const question = await getQuestionTextByIndex(payload.sheetName, payload.qIndex);
-    await client.views.open({
-        trigger_id: body.trigger_id,
-        view: { type: 'modal', callback_id: 'confirm_answer_submission', private_metadata: JSON.stringify(payload), title: { type: 'plain_text', text: 'Confirm Answer' }, submit: { type: 'plain_text', text: 'Confirm' }, blocks: [ { type: 'section', text: { type: 'mrkdwn', text: `Your answer for:\n*${question}*` } }, { type: 'section', text: { type: 'mrkdwn', text: `Is:\n>*${payload.label}*` } }] }
-    });
+    try {
+        const payload = JSON.parse(action.type === 'button' ? action.value : action.selected_option.value);
+        payload.messageTs = body.message.ts;
+        payload.channelId = body.channel.id;
+        const question = await getQuestionTextByIndex(payload.sheetName, payload.qIndex);
+        await client.views.open({
+            trigger_id: body.trigger_id,
+            view: { type: 'modal', callback_id: 'confirm_answer_submission', private_metadata: JSON.stringify(payload), title: { type: 'plain_text', text: 'Confirm Answer' }, submit: { type: 'plain_text', text: 'Confirm' }, blocks: [ { type: 'section', text: { type: 'mrkdwn', text: `Your answer for:\n*${question}*` } }, { type: 'section', text: { type: 'mrkdwn', text: `Is:\n>*${payload.label}*` } }] }
+        });
+    } catch (e) { console.error("Error in poll_response action:", e); }
 });
 
-// --- View Submission Handler ---
-app.view('poll_submission', async ({ ack, body, view, client }) => {
-    // Acknowledge the event immediately
+app.action('open_ended_answer_modal', async ({ ack, body, client, action }) => {
     await ack();
+    try {
+        const { sheetName, qIndex } = JSON.parse(action.value);
+        const question = await getQuestionTextByIndex(sheetName, qIndex);
+        await client.views.open({
+            trigger_id: body.trigger_id,
+            view: {
+                type: 'modal',
+                callback_id: 'open_ended_submission',
+                private_metadata: JSON.stringify({ sheetName, qIndex, channelId: body.channel.id, messageTs: body.message.ts }),
+                title: { type: 'plain_text', text: 'Your Answer' },
+                submit: { type: 'plain_text', text: 'Submit' },
+                blocks: [
+                    { type: 'section', text: { type: 'mrkdwn', text: `*Question:*\n>${question}` } },
+                    { type: 'input', block_id: 'open_ended_input_block', label: { type: 'plain_text', text: 'Please type your response below:' }, element: { type: 'plain_text_input', action_id: 'open_ended_input', multiline: true } }
+                ]
+            }
+        });
+    } catch(e) { console.error("Error opening open-ended modal:", e); }
+});
 
+// --- View Submission Handlers ---
+app.view('poll_submission', async ({ ack, body, view, client }) => {
+    await ack();
+    const user = body.user.id;
     try {
         const values = view.state.values;
-        const user = body.user.id;
-        
         const creatorInfo = await client.users.info({ user: user });
         const creatorName = creatorInfo.user.profile.real_name || creatorInfo.user.name;
 
@@ -263,8 +284,6 @@ app.view('poll_submission', async ({ ack, body, view, client }) => {
             return;
         }
         
-        console.log('Parsed Questions:', JSON.stringify(parsedQuestions, null, 2));
-
         const templateNameToSave = values.template_save_block?.template_save_name_input?.value;
         if (templateNameToSave) {
             await saveSurveyTemplate({ templateName: templateNameToSave, creatorId: user, surveyData: JSON.stringify(parsedData) });
@@ -310,11 +329,9 @@ app.view('poll_submission', async ({ ack, body, view, client }) => {
                         firstMessageTs = result.ts;
                     }
                 }
-                
                 if (firstMessageTs) {
                     recipientsWithTs.push({ id: conversationId, ts: firstMessageTs });
                 }
-
             } catch (error) { console.error(`Failed to send to ${conversationId}:`, error.data || error); }
         }
 
@@ -322,11 +339,7 @@ app.view('poll_submission', async ({ ack, body, view, client }) => {
 
     } catch (error) {
         console.error("Error in poll_submission view handler:", error);
-        await client.chat.postEphemeral({
-            user: body.user.id,
-            channel: body.user.id,
-            text: "Sorry, an unexpected error occurred while sending the survey. Please check the logs."
-        });
+        await client.chat.postEphemeral({ user: user, channel: user, text: "Sorry, an unexpected error occurred. Please check the logs." });
     }
 });
 
@@ -345,9 +358,28 @@ app.view('confirm_answer_submission', async ({ ack, body, view, client }) => {
 
         await saveOrUpdateResponse({ sheetName, user: userName, question, answer: label, timestamp: new Date().toISOString() });
         await client.chat.postEphemeral({ channel: channelId, user: body.user.id, thread_ts: messageTs, text: `✅ Thanks! Your answer "*${label}*" has been recorded.` });
-    } catch(e) {
-        console.error("Error in confirm_answer_submission:", e);
-    }
+    } catch(e) { console.error("Error in confirm_answer_submission:", e); }
+});
+
+app.view('open_ended_submission', async ({ ack, body, view, client }) => {
+    await ack();
+    try {
+        const { sheetName, qIndex, channelId, messageTs } = JSON.parse(view.private_metadata);
+        const answerText = view.state.values.open_ended_input_block.open_ended_input.value;
+
+        const userInfo = await client.users.info({ user: body.user.id });
+        const userName = userInfo.user.profile.real_name || userInfo.user.name;
+        const question = await getQuestionTextByIndex(sheetName, qIndex);
+
+        if (await checkIfAnswered({ sheetName, user: userName, question })) {
+            await client.chat.postEphemeral({ channel: channelId, user: body.user.id, thread_ts: messageTs, text: "⏩ You've already answered this question." });
+            return;
+        }
+
+        await saveOrUpdateResponse({ sheetName, user: userName, question, answer: answerText, timestamp: new Date().toISOString() });
+        await client.chat.postEphemeral({ channel: channelId, user: body.user.id, thread_ts: messageTs, text: `✅ Thanks! We've recorded your answer.` });
+
+    } catch(e) { console.error("Error in open_ended_submission:", e); }
 });
 
 // --- Start the App ---
