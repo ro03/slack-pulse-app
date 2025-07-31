@@ -52,28 +52,30 @@ const buildQuestionActions = (questionData, sheetName, questionIndex) => {
             elements.push({ type: 'static_select', placeholder: { type: 'plain_text', text: 'Choose an answer' }, action_id: baseActionId, options: questionOptions.map(label => ({ text: { type: 'plain_text', text: label }, value: valuePayload(label) })) });
             break;
         case 'checkboxes':
-            // Note: Checkboxes in threaded messages are complex to handle. This example provides the UI.
-            // A "Submit" button per message or a different interaction model might be needed.
             elements.push({ type: 'checkboxes', action_id: baseActionId, options: questionOptions.map(label => ({ text: { type: 'mrkdwn', text: label }, value: valuePayload(label) })) });
             break;
         case '1-to-5':
             questionOptions = ['1', '2', '3', '4', '5'];
-            // falls through
+            elements = questionOptions.map((label, optionIndex) => ({ type: 'button', text: { type: 'plain_text', text: label, emoji: true }, value: valuePayload(label), action_id: `${baseActionId}_btn${optionIndex}` }));
+            break;
         case '1-to-10':
-            if (!questionOptions) questionOptions = Array.from({ length: 10 }, (_, i) => (i + 1).toString());
-            // falls through
+            questionOptions = Array.from({ length: 10 }, (_, i) => (i + 1).toString());
+            elements = questionOptions.map((label, optionIndex) => ({ type: 'button', text: { type: 'plain_text', text: label, emoji: true }, value: valuePayload(label), action_id: `${baseActionId}_btn${optionIndex}` }));
+            break;
         case 'agree-disagree':
-            if (!questionOptions) questionOptions = ['Strongly Disagree', 'Disagree', 'Neutral', 'Agree', 'Strongly Agree'];
-            // falls through
+            questionOptions = ['Strongly Disagree', 'Disagree', 'Neutral', 'Agree', 'Strongly Agree'];
+            elements = questionOptions.map((label, optionIndex) => ({ type: 'button', text: { type: 'plain_text', text: label, emoji: true }, value: valuePayload(label), action_id: `${baseActionId}_btn${optionIndex}` }));
+            break;
         case 'nps':
-             if (!questionOptions) questionOptions = Array.from({ length: 11 }, (_, i) => i.toString());
-            // falls through
+             questionOptions = Array.from({ length: 11 }, (_, i) => i.toString());
+             elements = questionOptions.map((label, optionIndex) => ({ type: 'button', text: { type: 'plain_text', text: label, emoji: true }, value: valuePayload(label), action_id: `${baseActionId}_btn${optionIndex}` }));
+             break;
         case 'buttons':
         default:
             elements = questionOptions.map((label, optionIndex) => ({ type: 'button', text: { type: 'plain_text', text: label, emoji: true }, value: valuePayload(label), action_id: `${baseActionId}_btn${optionIndex}` }));
             break;
     }
-    return { type: 'actions', elements: elements };
+    return { type: 'actions', block_id: `actions_for_q_${questionIndex}`, elements: elements };
 };
 
 // --- Helper: Generate Survey Modal Blocks ---
@@ -244,12 +246,15 @@ app.view('poll_submission', async ({ ack, body, view, client }) => {
     }
     
     const parsedData = parseModalState(values);
-    const parsedQuestions = parsedData.questions.filter(q => q.questionText);
+    const parsedQuestions = parsedData.questions.filter(q => q.questionText && q.questionText.trim() !== '');
     if (parsedQuestions.length === 0) {
-        await ack({ response_action: 'errors', errors: { add_question_button: "Please add at least one question." } });
+        await ack({ response_action: 'errors', errors: { destinations_block: "Please add at least one question." } });
         return;
     }
     
+    // Add a log to help debug what data is being processed
+    console.log('Parsed Questions:', JSON.stringify(parsedQuestions, null, 2));
+
     await ack();
 
     const templateNameToSave = values.template_save_block?.template_save_name_input?.value;
@@ -289,14 +294,16 @@ app.view('poll_submission', async ({ ack, body, view, client }) => {
             if (parentTs) recipientsWithTs.push({ id: conversationId, ts: parentTs });
 
             // --- Send remaining questions in a thread ---
-            for (const [index, qData] of parsedQuestions.slice(1).entries()) {
-                const questionNumber = index + 2;
-                const questionIndexInSheet = index + 1;
-                let questionBlocks = [
-                    {type: 'section', text: {type: 'mrkdwn', text: `*${questionNumber}. ${qData.questionText}*`}},
-                    buildQuestionActions(qData, sheetName, questionIndexInSheet)
-                ];
-                await client.chat.postMessage({ channel: conversationId, thread_ts: parentTs, text: `Question ${questionNumber}`, blocks: questionBlocks });
+            if (parsedQuestions.length > 1) {
+                for (const [index, qData] of parsedQuestions.slice(1).entries()) {
+                    const questionNumber = index + 2;
+                    const questionIndexInSheet = index + 1;
+                    let questionBlocks = [
+                        {type: 'section', text: {type: 'mrkdwn', text: `*${questionNumber}. ${qData.questionText}*`}},
+                        buildQuestionActions(qData, sheetName, questionIndexInSheet)
+                    ];
+                    await client.chat.postMessage({ channel: conversationId, thread_ts: parentTs, text: `Question ${questionNumber}`, blocks: questionBlocks });
+                }
             }
         } catch (error) { console.error(`Failed to send to ${conversationId}:`, error.data || error); }
     }
@@ -306,18 +313,22 @@ app.view('poll_submission', async ({ ack, body, view, client }) => {
 
 app.view('confirm_answer_submission', async ({ ack, body, view, client }) => {
     await ack();
-    const { sheetName, label, qIndex, messageTs, channelId } = JSON.parse(view.private_metadata);
-    const userInfo = await client.users.info({ user: body.user.id });
-    const userName = userInfo.user.profile.real_name || userInfo.user.name;
-    const question = await getQuestionTextByIndex(sheetName, qIndex);
+    try {
+        const { sheetName, label, qIndex, messageTs, channelId } = JSON.parse(view.private_metadata);
+        const userInfo = await client.users.info({ user: body.user.id });
+        const userName = userInfo.user.profile.real_name || userInfo.user.name;
+        const question = await getQuestionTextByIndex(sheetName, qIndex);
 
-    if (await checkIfAnswered({ sheetName, user: userName, question })) {
-        await client.chat.postEphemeral({ channel: channelId, user: body.user.id, thread_ts: messageTs, text: "⏩ You've already answered this question." });
-        return;
+        if (await checkIfAnswered({ sheetName, user: userName, question })) {
+            await client.chat.postEphemeral({ channel: channelId, user: body.user.id, thread_ts: messageTs, text: "⏩ You've already answered this question." });
+            return;
+        }
+
+        await saveOrUpdateResponse({ sheetName, user: userName, question, answer: label, timestamp: new Date().toISOString() });
+        await client.chat.postEphemeral({ channel: channelId, user: body.user.id, thread_ts: messageTs, text: `✅ Thanks! Your answer "*${label}*" has been recorded.` });
+    } catch(e) {
+        console.error("Error in confirm_answer_submission:", e);
     }
-
-    await saveOrUpdateResponse({ sheetName, user: userName, question, answer: label, timestamp: new Date().toISOString() });
-    await client.chat.postEphemeral({ channel: channelId, user: body.user.id, thread_ts: messageTs, text: `✅ Thanks! Your answer "*${label}*" has been recorded.` });
 });
 
 // --- Start the App ---
