@@ -252,7 +252,6 @@ app.view('poll_submission', async ({ ack, body, view, client }) => {
         return;
     }
     
-    // Add a log to help debug what data is being processed
     console.log('Parsed Questions:', JSON.stringify(parsedQuestions, null, 2));
 
     await ack();
@@ -272,6 +271,7 @@ app.view('poll_submission', async ({ ack, body, view, client }) => {
 
     const recipientsWithTs = [];
     for (const conversationId of conversationIds) {
+        let firstMessageTs = null;
         try {
             let introText = parsedData.introMessage;
             if (introText && conversationId.startsWith('U')) {
@@ -280,31 +280,32 @@ app.view('poll_submission', async ({ ack, body, view, client }) => {
                 introText = introText.replace(/\[firstName\]/g, firstName);
             }
             
-            // --- Send Intro + First Question ---
-            const firstQ = parsedQuestions[0];
-            let firstMessageBlocks = [];
             if (introText) {
-                firstMessageBlocks.push({ type: 'section', text: { type: 'mrkdwn', text: introText } }, { type: 'divider' });
+                await client.chat.postMessage({ channel: conversationId, text: introText, blocks: [{ type: 'section', text: { type: 'mrkdwn', text: introText } }] });
             }
-            firstMessageBlocks.push({type: 'section', text: {type: 'mrkdwn', text: `*1. ${firstQ.questionText}*`}});
-            firstMessageBlocks.push(buildQuestionActions(firstQ, sheetName, 0));
 
-            const result = await client.chat.postMessage({ channel: conversationId, text: `You have a new survey: ${firstQ.questionText}`, blocks: firstMessageBlocks });
-            const parentTs = result.ts;
-            if (parentTs) recipientsWithTs.push({ id: conversationId, ts: parentTs });
-
-            // --- Send remaining questions in a thread ---
-            if (parsedQuestions.length > 1) {
-                for (const [index, qData] of parsedQuestions.slice(1).entries()) {
-                    const questionNumber = index + 2;
-                    const questionIndexInSheet = index + 1;
-                    let questionBlocks = [
-                        {type: 'section', text: {type: 'mrkdwn', text: `*${questionNumber}. ${qData.questionText}*`}},
-                        buildQuestionActions(qData, sheetName, questionIndexInSheet)
-                    ];
-                    await client.chat.postMessage({ channel: conversationId, thread_ts: parentTs, text: `Question ${questionNumber}`, blocks: questionBlocks });
+            for (const [index, qData] of parsedQuestions.entries()) {
+                const questionNumber = index + 1;
+                const questionBlocks = [
+                    { type: 'section', text: { type: 'mrkdwn', text: `*${questionNumber}. ${qData.questionText}*` } },
+                    buildQuestionActions(qData, sheetName, index)
+                ];
+                
+                const result = await client.chat.postMessage({
+                    channel: conversationId,
+                    text: `Question ${questionNumber}: ${qData.questionText}`,
+                    blocks: questionBlocks
+                });
+                
+                if (index === 0) {
+                    firstMessageTs = result.ts;
                 }
             }
+            
+            if (firstMessageTs) {
+                recipientsWithTs.push({ id: conversationId, ts: firstMessageTs });
+            }
+
         } catch (error) { console.error(`Failed to send to ${conversationId}:`, error.data || error); }
     }
 
