@@ -23,11 +23,11 @@ if (process.env.NODE_ENV !== 'production') {
 const receiver = new ExpressReceiver({ signingSecret: process.env.SLACK_SIGNING_SECRET });
 const app = new App({ token: process.env.SLACK_BOT_TOKEN, receiver: receiver });
 
-// --- Basic Express Routes (Unchanged) ---
+// --- Basic Express Routes ---
 receiver.app.get('/', (req, res) => { res.status(200).send('App is up and running!'); });
 receiver.app.get('/api/slack/callback', async (req, res) => {
     try {
-        const response = await app.client.oauth.v2.access({ client_id: process.env.SLACK_CLIENT_ID, client_secret: process.env.SLACK_CLIENT_SECRET, code: req.query.code, });
+        await app.client.oauth.v2.access({ client_id: process.env.SLACK_CLIENT_ID, client_secret: process.env.SLACK_CLIENT_SECRET, code: req.query.code, });
         res.send('Your app has been successfully installed! You can close this window.');
     } catch (error) {
         console.error('OAuth Error:', error);
@@ -35,49 +35,46 @@ receiver.app.get('/api/slack/callback', async (req, res) => {
     }
 });
 
-
 // --- Helper: Generate Survey Modal Blocks ---
 const generateModalBlocks = (viewData = {}) => {
     const { questions = [], userGroups = [], templates = [] } = viewData;
     let blocks = [];
 
-    // --- Template Loading ---
+    const questionTypeOptions = [
+        { text: { type: 'plain_text', text: 'Buttons' }, value: 'buttons' },
+        { text: { type: 'plain_text', text: 'Dropdown Menu' }, value: 'dropdown' },
+        { text: { type: 'plain_text', text: 'Checkboxes' }, value: 'checkboxes' },
+        { text: { type: 'plain_text', text: 'Open Ended' }, value: 'open-ended' },
+        { text: { type: 'plain_text', text: 'Agree/Disagree Scale' }, value: 'agree-disagree' },
+        { text: { type: 'plain_text', text: '1-to-5 Scale' }, value: '1-to-5' },
+        { text: { type: 'plain_text', text: '1-to-10 Scale' }, value: '1-to-10' },
+        { text: { type: 'plain_text', text: 'NPS (0-10)' }, value: 'nps' }
+    ];
+
     if (templates.length > 0) {
-        blocks.push({
-            type: 'input',
-            block_id: 'template_load_block',
-            optional: true,
-            label: { type: 'plain_text', text: 'Load from Template' },
-            element: { type: 'static_select', action_id: 'load_survey_template', placeholder: { type: 'plain_text', text: 'Choose a template' }, options: templates.map(t => ({ text: { type: 'plain_text', text: t.TemplateName }, value: t.TemplateName })) },
-        });
+        blocks.push({ type: 'input', block_id: 'template_load_block', optional: true, label: { type: 'plain_text', text: 'Load from Template' }, element: { type: 'static_select', action_id: 'load_survey_template', placeholder: { type: 'plain_text', text: 'Choose a template' }, options: templates.map(t => ({ text: { type: 'plain_text', text: t.TemplateName }, value: t.TemplateName })) } });
         blocks.push({ type: 'divider' });
     }
 
-    // --- Introduction Section ---
     blocks.push(
         { type: 'header', text: { type: 'plain_text', text: 'Survey Introduction' } },
         { type: 'input', block_id: 'intro_message_block', optional: true, label: { type: 'plain_text', text: 'Introductory Message (use [firstName])' }, element: { type: 'plain_text_input', multiline: true, action_id: 'intro_message_input', initial_value: viewData.introMessage || '' } }
     );
 
-    // --- Questions Section ---
     questions.forEach((q, index) => {
         const i = index + 1;
         blocks.push({ type: 'divider' });
-        blocks.push(
-            { type: 'context', elements: [{ type: 'mrkdwn', text: `*Question ${i}*` }] },
-            { type: 'actions', elements: [{ type: 'button', text: { type: 'plain_text', text: 'Remove', emoji: true }, style: 'danger', action_id: 'delete_question_button', value: `${i}` }] }
-        );
+        blocks.push({ type: 'context', elements: [{ type: 'mrkdwn', text: `*Question ${i}*` }] });
+        blocks.push({ type: 'actions', elements: [{ type: 'button', text: { type: 'plain_text', text: 'Remove' }, style: 'danger', action_id: 'delete_question_button', value: `${i}` }] });
         blocks.push(
             { type: 'input', optional: true, block_id: `question_block_${i}`, label: { type: 'plain_text', text: 'Poll Question' }, element: { type: 'plain_text_input', action_id: `question_input_${i}`, initial_value: q.questionText || '' } },
             { type: 'input', optional: true, block_id: `options_block_${i}`, label: { type: 'plain_text', text: 'Answer Options (one per line)' }, element: { type: 'plain_text_input', multiline: true, action_id: `options_input_${i}`, initial_value: q.options ? q.options.join('\n') : '' } },
-            { type: 'input', block_id: `format_block_${i}`, label: { type: 'plain_text', text: 'Question Type' }, element: { type: 'static_select', action_id: `format_select_${i}`, initial_option: q.pollFormat ? { text: { type: 'plain_text', text: q.pollFormat.replace('-', ' ').replace(/\b\w/g, c => c.toUpperCase()) }, value: q.pollFormat } : { text: { type: 'plain_text', text: 'Buttons' }, value: 'buttons' }, options: [ { text: { type: 'plain_text', text: 'Buttons' }, value: 'buttons' }, { text: { type: 'plain_text', text: 'Dropdown Menu' }, value: 'dropdown' }, { text: { type: 'plain_text', text: 'Checkboxes' }, value: 'checkboxes' }, { text: { type: 'plain_text', text: 'Open Ended' }, value: 'open-ended' }, { text: { type: 'plain_text', text: 'Agree/Disagree Scale' }, value: 'agree-disagree' }, { text: { type: 'plain_text', text: '1-to-5 Scale' }, value: '1-to-5' }, { text: { type: 'plain_text', text: '1-to-10 Scale' }, value: '1-to-10' }, { text: { type: 'plain_text', text: 'NPS (0-10)' }, value: 'nps' }]}}
+            { type: 'input', block_id: `format_block_${i}`, label: { type: 'plain_text', text: 'Question Type' }, element: { type: 'static_select', action_id: `format_select_${i}`, initial_option: questionTypeOptions.find(opt => opt.value === q.pollFormat) || questionTypeOptions[0], options: questionTypeOptions }}
         );
     });
 
     blocks.push({ type: 'divider' });
     blocks.push({ type: 'actions', elements: [{ type: 'button', text: { type: 'plain_text', text: questions.length === 0 ? '➕ Add a Question' : '➕ Add Another Question' }, action_id: 'add_question_button' }] });
-    
-    // --- Reminders & Templates ---
     blocks.push({ type: 'divider' });
     blocks.push(
         { type: 'header', text: { type: 'plain_text', text: 'Settings' } },
@@ -85,8 +82,6 @@ const generateModalBlocks = (viewData = {}) => {
         { type: 'input', block_id: 'reminder_schedule_block', optional: true, label: { type: 'plain_text', text: 'Reminder Frequency' }, element: { type: 'static_select', action_id: 'reminder_schedule_select', placeholder: { type: 'plain_text', text: 'Do not send reminders' }, options: [{ text: { type: 'plain_text', text: 'Every 8 hours' }, value: '8' }, { text: { type: 'plain_text', text: 'Every 24 hours' }, value: '24' }, { text: { type: 'plain_text', text: 'Every 3 days' }, value: '72' }] } },
         { type: 'input', optional: true, block_id: 'template_save_block', label: { type: 'plain_text', text: 'Save as a new template?' }, element: { type: 'plain_text_input', action_id: 'template_save_name_input', placeholder: { type: 'plain_text', text: 'e.g., Q3 Engineering Feedback' } } }
     );
-    
-    // --- Destination Section (Unchanged) ---
     blocks.push({ type: 'divider' });
     if (userGroups.length > 0) { blocks.push({ type: 'input', block_id: 'group_destination_block', optional: true, label: { type: 'plain_text', text: 'OR... Send to a Saved Group' }, element: { type: 'static_select', action_id: 'group_destination_select', placeholder: { type: 'plain_text', text: 'Select a group' }, options: userGroups.map(group => ({ text: { type: 'plain_text', text: group.GroupName }, value: group.GroupName })) } }); }
     blocks.push({ type: 'input', block_id: 'destinations_block', optional: true, label: { type: 'plain_text', text: 'Send survey to users or channels' }, element: { type: 'multi_conversations_select', placeholder: { type: 'plain_text', text: 'Select destinations' }, action_id: 'destinations_select' } });
@@ -112,7 +107,6 @@ const parseModalState = (values) => {
         questions: questions,
     };
 };
-
 
 // --- Command Handlers ---
 app.command('/ask', async ({ ack, body, client }) => {
@@ -152,7 +146,7 @@ app.action(/^(add|delete)_question_button$|^load_survey_template$/, async ({ ack
     let viewData = parseModalState(body.view.state.values);
 
     if (action.action_id === 'add_question_button') {
-        viewData.questions.push({}); // Add a new empty question
+        viewData.questions.push({});
     } else if (action.action_id === 'delete_question_button') {
         const questionIndexToDelete = parseInt(action.value, 10) - 1;
         viewData.questions.splice(questionIndexToDelete, 1);
@@ -165,11 +159,15 @@ app.action(/^(add|delete)_question_button$|^load_survey_template$/, async ({ ack
     viewData.userGroups = userGroups;
     viewData.templates = templates;
 
-    await client.views.update({
-        view_id: body.view.id,
-        hash: body.view.hash,
-        view: { type: 'modal', callback_id: 'poll_submission', title: { type: 'plain_text', text: 'Create New Survey' }, submit: { type: 'plain_text', text: 'Send Survey' }, blocks: generateModalBlocks(viewData) },
-    });
+    try {
+        await client.views.update({
+            view_id: body.view.id,
+            hash: body.view.hash,
+            view: { type: 'modal', callback_id: 'poll_submission', title: { type: 'plain_text', text: 'Create New Survey' }, submit: { type: 'plain_text', text: 'Send Survey' }, blocks: generateModalBlocks(viewData) },
+        });
+    } catch(e) {
+        console.error("View update failed:", e.data);
+    }
 });
 
 app.action('delete_template_button', async ({ ack, action }) => {
@@ -196,7 +194,6 @@ app.view('poll_submission', async ({ ack, body, view, client }) => {
     const creatorInfo = await client.users.info({ user: body.user.id });
     const creatorName = creatorInfo.user.profile.real_name || creatorInfo.user.name;
 
-    // --- Destination Logic ---
     let finalConversationIds = new Set();
     (values.destinations_block.destinations_select.selected_conversations || []).forEach(id => finalConversationIds.add(id));
     const selectedGroupName = values.group_destination_block?.group_destination_select?.selected_option?.value;
@@ -216,13 +213,11 @@ app.view('poll_submission', async ({ ack, body, view, client }) => {
     
     await ack();
 
-    // --- Save Template if name is provided ---
     const templateNameToSave = values.template_save_block?.template_save_name_input?.value;
     if (templateNameToSave) {
         await saveSurveyTemplate({ templateName: templateNameToSave, creatorId: body.user.id, surveyData: JSON.stringify(parsedData) });
     }
 
-    // --- Create Sheet ---
     const questionTexts = parsedQuestions.map(q => q.questionText);
     const sheetName = `Survey - ${questionTexts[0].substring(0, 40)} - ${Date.now()}`;
     const surveyDetails = {
@@ -231,11 +226,9 @@ app.view('poll_submission', async ({ ack, body, view, client }) => {
     };
     await createNewSheetWithDetails(sheetName, creatorName, questionTexts, surveyDetails);
 
-    // --- Send Threaded Messages ---
     const recipientsWithTs = [];
     for (const conversationId of conversationIds) {
         try {
-            // Send Intro + First Question
             let introText = parsedData.introMessage;
             if (introText && conversationId.startsWith('U')) {
                 const userInfo = await client.users.info({ user: conversationId });
@@ -244,20 +237,18 @@ app.view('poll_submission', async ({ ack, body, view, client }) => {
             }
             
             let firstMessageBlocks = introText ? [{ type: 'section', text: { type: 'mrkdwn', text: introText } }, { type: 'divider' }] : [];
-            // ... construct blocks for first question ...
             const firstQ = parsedQuestions[0];
             firstMessageBlocks.push({type: 'section', text: {type: 'mrkdwn', text: `*1. ${firstQ.questionText}*`}});
-            // ... Add action elements for firstQ ...
+            // TODO: Add action elements for firstQ based on its pollFormat
 
             const result = await client.chat.postMessage({ channel: conversationId, text: 'You have a new survey!', blocks: firstMessageBlocks });
             const parentTs = result.ts;
-            if (parentTs) recipientsWithTs.push({ id: conversationId, ts: parentTs, user: null }); // user field will be populated later
+            if (parentTs) recipientsWithTs.push({ id: conversationId, ts: parentTs });
 
-            // Send remaining questions in a thread
             for (const [index, qData] of parsedQuestions.slice(1).entries()) {
                 const questionNumber = index + 2;
                 let questionBlocks = [{type: 'section', text: {type: 'mrkdwn', text: `*${questionNumber}. ${qData.questionText}*`}}];
-                // ... Add action elements for qData ...
+                // TODO: Add action elements for qData based on its pollFormat
                 await client.chat.postMessage({ channel: conversationId, thread_ts: parentTs, text: `Question ${questionNumber}`, blocks: questionBlocks });
             }
         } catch (error) { console.error(`Failed to send to ${conversationId}:`, error.data || error); }
