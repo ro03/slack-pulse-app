@@ -29,17 +29,16 @@ const sendReminders = async () => {
             const incompleteRecipients = await getIncompleteUsers(sheetName, recipients);
 
             for (const recipient of incompleteRecipients) {
-                // Only send reminders to users, not channels
                 if (!recipient.id.startsWith('U')) continue;
 
-                let personalizedMessage = reminderMessage;
+                let personalizedMessage = reminderMessage || 'Hi [firstName], just a friendly reminder to complete this survey.';
                 try {
                     const userInfo = await slackClient.users.info({ user: recipient.id });
                     const firstName = userInfo.user.profile.first_name || userInfo.user.profile.real_name.split(' ')[0];
-                    personalizedMessage = reminderMessage.replace(/\[firstName\]/g, firstName);
+                    personalizedMessage = personalizedMessage.replace(/\[firstName\]/g, firstName);
 
                     await slackClient.chat.postEphemeral({
-                        channel: recipient.id, // Must send to channel for user to see it
+                        channel: recipient.id,
                         user: recipient.id,
                         thread_ts: recipient.ts,
                         text: personalizedMessage
@@ -58,7 +57,6 @@ const sendReminders = async () => {
 
 const startScheduler = (client) => {
     slackClient = client;
-    // Schedule to run at the top of every hour
     cron.schedule('0 * * * *', sendReminders);
     console.log('✅ Reminder scheduler has been started.');
 };
