@@ -35,6 +35,47 @@ receiver.app.get('/api/slack/callback', async (req, res) => {
     }
 });
 
+// --- Helper: Build Interactive elements for a question ---
+const buildQuestionActions = (questionData, sheetName, questionIndex) => {
+    const { options, pollFormat } = questionData;
+    const baseActionId = `poll_response_${Date.now()}_q${questionIndex}`;
+    const valuePayload = (label) => JSON.stringify({ sheetName, label, qIndex: questionIndex });
+
+    let elements = [];
+    let questionOptions = options;
+
+    switch (pollFormat) {
+        case 'open-ended':
+            elements.push({ type: 'button', text: { type: 'plain_text', text: '✍️ Answer Question' }, action_id: `open_ended_answer_modal`, value: JSON.stringify({ sheetName, qIndex: questionIndex }) });
+            break;
+        case 'dropdown':
+            elements.push({ type: 'static_select', placeholder: { type: 'plain_text', text: 'Choose an answer' }, action_id: baseActionId, options: questionOptions.map(label => ({ text: { type: 'plain_text', text: label }, value: valuePayload(label) })) });
+            break;
+        case 'checkboxes':
+            // Note: Checkboxes in threaded messages are complex to handle. This example provides the UI.
+            // A "Submit" button per message or a different interaction model might be needed.
+            elements.push({ type: 'checkboxes', action_id: baseActionId, options: questionOptions.map(label => ({ text: { type: 'mrkdwn', text: label }, value: valuePayload(label) })) });
+            break;
+        case '1-to-5':
+            questionOptions = ['1', '2', '3', '4', '5'];
+            // falls through
+        case '1-to-10':
+            if (!questionOptions) questionOptions = Array.from({ length: 10 }, (_, i) => (i + 1).toString());
+            // falls through
+        case 'agree-disagree':
+            if (!questionOptions) questionOptions = ['Strongly Disagree', 'Disagree', 'Neutral', 'Agree', 'Strongly Agree'];
+            // falls through
+        case 'nps':
+             if (!questionOptions) questionOptions = Array.from({ length: 11 }, (_, i) => i.toString());
+            // falls through
+        case 'buttons':
+        default:
+            elements = questionOptions.map((label, optionIndex) => ({ type: 'button', text: { type: 'plain_text', text: label, emoji: true }, value: valuePayload(label), action_id: `${baseActionId}_btn${optionIndex}` }));
+            break;
+    }
+    return { type: 'actions', elements: elements };
+};
+
 // --- Helper: Generate Survey Modal Blocks ---
 const generateModalBlocks = (viewData = {}) => {
     const { questions = [], userGroups = [], templates = [] } = viewData;
@@ -139,7 +180,6 @@ app.command('/templates', async ({ ack, body, client }) => {
     await client.views.open({ trigger_id: body.trigger_id, view: { type: 'modal', title: { type: 'plain_text', text: 'Manage Templates' }, blocks } });
 });
 
-
 // --- Action Handlers ---
 app.action(/^(add|delete)_question_button$|^load_survey_template$/, async ({ ack, body, client, action }) => {
     await ack();
@@ -166,7 +206,7 @@ app.action(/^(add|delete)_question_button$|^load_survey_template$/, async ({ ack
             view: { type: 'modal', callback_id: 'poll_submission', title: { type: 'plain_text', text: 'Create New Survey' }, submit: { type: 'plain_text', text: 'Send Survey' }, blocks: generateModalBlocks(viewData) },
         });
     } catch(e) {
-        console.error("View update failed:", e.data);
+        console.error("View update failed:", e.data || e);
     }
 });
 
@@ -186,7 +226,6 @@ app.action(/^poll_response_.+$/, async ({ ack, body, client, action }) => {
         view: { type: 'modal', callback_id: 'confirm_answer_submission', private_metadata: JSON.stringify(payload), title: { type: 'plain_text', text: 'Confirm Answer' }, submit: { type: 'plain_text', text: 'Confirm' }, blocks: [ { type: 'section', text: { type: 'mrkdwn', text: `Your answer for:\n*${question}*` } }, { type: 'section', text: { type: 'mrkdwn', text: `Is:\n>*${payload.label}*` } }] }
     });
 });
-
 
 // --- View Submission Handler ---
 app.view('poll_submission', async ({ ack, body, view, client }) => {
@@ -236,19 +275,27 @@ app.view('poll_submission', async ({ ack, body, view, client }) => {
                 introText = introText.replace(/\[firstName\]/g, firstName);
             }
             
-            let firstMessageBlocks = introText ? [{ type: 'section', text: { type: 'mrkdwn', text: introText } }, { type: 'divider' }] : [];
+            // --- Send Intro + First Question ---
             const firstQ = parsedQuestions[0];
+            let firstMessageBlocks = [];
+            if (introText) {
+                firstMessageBlocks.push({ type: 'section', text: { type: 'mrkdwn', text: introText } }, { type: 'divider' });
+            }
             firstMessageBlocks.push({type: 'section', text: {type: 'mrkdwn', text: `*1. ${firstQ.questionText}*`}});
-            // TODO: Add action elements for firstQ based on its pollFormat
+            firstMessageBlocks.push(buildQuestionActions(firstQ, sheetName, 0));
 
-            const result = await client.chat.postMessage({ channel: conversationId, text: 'You have a new survey!', blocks: firstMessageBlocks });
+            const result = await client.chat.postMessage({ channel: conversationId, text: `You have a new survey: ${firstQ.questionText}`, blocks: firstMessageBlocks });
             const parentTs = result.ts;
             if (parentTs) recipientsWithTs.push({ id: conversationId, ts: parentTs });
 
+            // --- Send remaining questions in a thread ---
             for (const [index, qData] of parsedQuestions.slice(1).entries()) {
                 const questionNumber = index + 2;
-                let questionBlocks = [{type: 'section', text: {type: 'mrkdwn', text: `*${questionNumber}. ${qData.questionText}*`}}];
-                // TODO: Add action elements for qData based on its pollFormat
+                const questionIndexInSheet = index + 1;
+                let questionBlocks = [
+                    {type: 'section', text: {type: 'mrkdwn', text: `*${questionNumber}. ${qData.questionText}*`}},
+                    buildQuestionActions(qData, sheetName, questionIndexInSheet)
+                ];
                 await client.chat.postMessage({ channel: conversationId, thread_ts: parentTs, text: `Question ${questionNumber}`, blocks: questionBlocks });
             }
         } catch (error) { console.error(`Failed to send to ${conversationId}:`, error.data || error); }
