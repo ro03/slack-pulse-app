@@ -231,85 +231,103 @@ app.action(/^poll_response_.+$/, async ({ ack, body, client, action }) => {
 
 // --- View Submission Handler ---
 app.view('poll_submission', async ({ ack, body, view, client }) => {
-    const values = view.state.values;
-    const creatorInfo = await client.users.info({ user: body.user.id });
-    const creatorName = creatorInfo.user.profile.real_name || creatorInfo.user.name;
-
-    let finalConversationIds = new Set();
-    (values.destinations_block.destinations_select.selected_conversations || []).forEach(id => finalConversationIds.add(id));
-    const selectedGroupName = values.group_destination_block?.group_destination_select?.selected_option?.value;
-    if (selectedGroupName) { (await getGroupMembers(selectedGroupName)).forEach(id => finalConversationIds.add(id)); }
-    const conversationIds = Array.from(finalConversationIds);
-    if (conversationIds.length === 0) {
-        await ack({ response_action: 'errors', errors: { destinations_block: 'Please select at least one destination.' } });
-        return;
-    }
-    
-    const parsedData = parseModalState(values);
-    const parsedQuestions = parsedData.questions.filter(q => q.questionText && q.questionText.trim() !== '');
-    if (parsedQuestions.length === 0) {
-        await ack({ response_action: 'errors', errors: { destinations_block: "Please add at least one question." } });
-        return;
-    }
-    
-    console.log('Parsed Questions:', JSON.stringify(parsedQuestions, null, 2));
-
+    // Acknowledge the event immediately
     await ack();
 
-    const templateNameToSave = values.template_save_block?.template_save_name_input?.value;
-    if (templateNameToSave) {
-        await saveSurveyTemplate({ templateName: templateNameToSave, creatorId: body.user.id, surveyData: JSON.stringify(parsedData) });
-    }
+    try {
+        const values = view.state.values;
+        const user = body.user.id;
+        
+        const creatorInfo = await client.users.info({ user: user });
+        const creatorName = creatorInfo.user.profile.real_name || creatorInfo.user.name;
 
-    const questionTexts = parsedQuestions.map(q => q.questionText);
-    const sheetName = `Survey - ${questionTexts[0].substring(0, 40)} - ${Date.now()}`;
-    const surveyDetails = {
-        reminderMessage: values.reminder_message_block?.reminder_message_input?.value || '',
-        reminderHours: parseInt(values.reminder_schedule_block?.reminder_schedule_select?.selected_option?.value || '0', 10),
-    };
-    await createNewSheetWithDetails(sheetName, creatorName, questionTexts, surveyDetails);
+        let finalConversationIds = new Set();
+        (values.destinations_block.destinations_select.selected_conversations || []).forEach(id => finalConversationIds.add(id));
+        const selectedGroupName = values.group_destination_block?.group_destination_select?.selected_option?.value;
+        if (selectedGroupName) { 
+            const groupMembers = await getGroupMembers(selectedGroupName);
+            groupMembers.forEach(id => finalConversationIds.add(id)); 
+        }
+        const conversationIds = Array.from(finalConversationIds);
+        
+        if (conversationIds.length === 0) {
+            await client.chat.postEphemeral({ user: user, channel: user, text: "⚠️ Survey not sent. You must select at least one destination channel or group." });
+            return;
+        }
+        
+        const parsedData = parseModalState(values);
+        const parsedQuestions = parsedData.questions.filter(q => q.questionText && q.questionText.trim() !== '');
+        
+        if (parsedQuestions.length === 0) {
+            await client.chat.postEphemeral({ user: user, channel: user, text: "⚠️ Survey not sent. You must add at least one question." });
+            return;
+        }
+        
+        console.log('Parsed Questions:', JSON.stringify(parsedQuestions, null, 2));
 
-    const recipientsWithTs = [];
-    for (const conversationId of conversationIds) {
-        let firstMessageTs = null;
-        try {
-            let introText = parsedData.introMessage;
-            if (introText && conversationId.startsWith('U')) {
-                const userInfo = await client.users.info({ user: conversationId });
-                const firstName = userInfo.user.profile.first_name || userInfo.user.profile.real_name.split(' ')[0];
-                introText = introText.replace(/\[firstName\]/g, firstName);
-            }
-            
-            if (introText) {
-                await client.chat.postMessage({ channel: conversationId, text: introText, blocks: [{ type: 'section', text: { type: 'mrkdwn', text: introText } }] });
-            }
+        const templateNameToSave = values.template_save_block?.template_save_name_input?.value;
+        if (templateNameToSave) {
+            await saveSurveyTemplate({ templateName: templateNameToSave, creatorId: user, surveyData: JSON.stringify(parsedData) });
+        }
 
-            for (const [index, qData] of parsedQuestions.entries()) {
-                const questionNumber = index + 1;
-                const questionBlocks = [
-                    { type: 'section', text: { type: 'mrkdwn', text: `*${questionNumber}. ${qData.questionText}*` } },
-                    buildQuestionActions(qData, sheetName, index)
-                ];
-                
-                const result = await client.chat.postMessage({
-                    channel: conversationId,
-                    text: `Question ${questionNumber}: ${qData.questionText}`,
-                    blocks: questionBlocks
-                });
-                
-                if (index === 0) {
-                    firstMessageTs = result.ts;
+        const questionTexts = parsedQuestions.map(q => q.questionText);
+        const sheetName = `Survey - ${questionTexts[0].substring(0, 40)} - ${Date.now()}`;
+        const surveyDetails = {
+            reminderMessage: values.reminder_message_block?.reminder_message_input?.value || '',
+            reminderHours: parseInt(values.reminder_schedule_block?.reminder_schedule_select?.selected_option?.value || '0', 10),
+        };
+        await createNewSheetWithDetails(sheetName, creatorName, questionTexts, surveyDetails);
+
+        const recipientsWithTs = [];
+        for (const conversationId of conversationIds) {
+            let firstMessageTs = null;
+            try {
+                let introText = parsedData.introMessage;
+                if (introText && conversationId.startsWith('U')) {
+                    const userInfo = await client.users.info({ user: conversationId });
+                    const firstName = userInfo.user.profile.first_name || userInfo.user.profile.real_name.split(' ')[0];
+                    introText = introText.replace(/\[firstName\]/g, firstName);
                 }
-            }
-            
-            if (firstMessageTs) {
-                recipientsWithTs.push({ id: conversationId, ts: firstMessageTs });
-            }
+                
+                if (introText) {
+                    await client.chat.postMessage({ channel: conversationId, text: introText, blocks: [{ type: 'section', text: { type: 'mrkdwn', text: introText } }] });
+                }
 
-        } catch (error) { console.error(`Failed to send to ${conversationId}:`, error.data || error); }
+                for (const [index, qData] of parsedQuestions.entries()) {
+                    const questionNumber = index + 1;
+                    const questionBlocks = [
+                        { type: 'section', text: { type: 'mrkdwn', text: `*${questionNumber}. ${qData.questionText}*` } },
+                        buildQuestionActions(qData, sheetName, index)
+                    ];
+                    
+                    const result = await client.chat.postMessage({
+                        channel: conversationId,
+                        text: `Question ${questionNumber}: ${qData.questionText}`,
+                        blocks: questionBlocks
+                    });
+                    
+                    if (index === 0) {
+                        firstMessageTs = result.ts;
+                    }
+                }
+                
+                if (firstMessageTs) {
+                    recipientsWithTs.push({ id: conversationId, ts: firstMessageTs });
+                }
+
+            } catch (error) { console.error(`Failed to send to ${conversationId}:`, error.data || error); }
+        }
+
+        if (recipientsWithTs.length > 0) { await saveRecipients(sheetName, recipientsWithTs); }
+
+    } catch (error) {
+        console.error("Error in poll_submission view handler:", error);
+        await client.chat.postEphemeral({
+            user: body.user.id,
+            channel: body.user.id,
+            text: "Sorry, an unexpected error occurred while sending the survey. Please check the logs."
+        });
     }
-
-    if (recipientsWithTs.length > 0) { await saveRecipients(sheetName, recipientsWithTs); }
 });
 
 app.view('confirm_answer_submission', async ({ ack, body, view, client }) => {
