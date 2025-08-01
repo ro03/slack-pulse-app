@@ -15,10 +15,10 @@ const authorize = () => {
         const credentialsFileContent = fs.readFileSync(credentialsPath);
         credentials = JSON.parse(credentialsFileContent);
     } else {
-        if (!process.env.GOOGLE_SHEET_CREDENTIALS) {
-            throw new Error('FATAL: GOOGLE_SHEET_CREDENTIALS env var is not set and secret file not found.');
+        if (!process.env.GOOGLE_SHEETS_CREDENTIALS) {
+            throw new Error('FATAL: GOOGLE_SHEETS_CREDENTIALS env var is not set and secret file not found.');
         }
-        credentials = JSON.parse(process.env.GOOGLE_SHEET_CREDENTIALS);
+        credentials = JSON.parse(process.env.GOOGLE_SHEETS_CREDENTIALS);
     }
     return new google.auth.GoogleAuth({ credentials, scopes: ['https://www.googleapis.com/auth/spreadsheets'] }).getClient();
 };
@@ -30,7 +30,6 @@ const METADATA_ROWS = {
     LAST_REMINDER: 5, DEFINITION: 6, HEADERS: 7
 };
 
-// --- Survey Setup ---
 const createNewSheetWithDetails = async (sheetName, creatorName, questionHeaders, details, surveyDefJson) => {
     const sheets = await getSheetsClient();
     await sheets.spreadsheets.batchUpdate({ spreadsheetId: SHEET_ID, resource: { requests: [{ addSheet: { properties: { title: sheetName } } }] } });
@@ -52,7 +51,6 @@ const saveRecipients = async (sheetName, recipients) => {
     await sheets.spreadsheets.values.update({ spreadsheetId: SHEET_ID, range: `${sheetName}!B${METADATA_ROWS.RECIPIENTS}`, valueInputOption: 'USER_ENTERED', resource: { values: [[JSON.stringify(recipients)]] } });
 };
 
-// --- Data Retrieval ---
 const getSurveyDefinition = async (sheetName) => {
     const sheets = await getSheetsClient();
     const res = await sheets.spreadsheets.values.get({ spreadsheetId: SHEET_ID, range: `${sheetName}!B${METADATA_ROWS.DEFINITION}` });
@@ -62,13 +60,6 @@ const getSurveyDefinition = async (sheetName) => {
     return JSON.parse(res.data.values[0][0]);
 };
 
-const getQuestionTextByIndex = async (sheetName, qIndex) => {
-    const sheets = await getSheetsClient();
-    const res = await sheets.spreadsheets.values.get({ spreadsheetId: SHEET_ID, range: `${sheetName}!${METADATA_ROWS.HEADERS}:${METADATA_ROWS.HEADERS}` });
-    return res.data.values[0][qIndex + 2];
-};
-
-// --- Response Handling ---
 const saveOrUpdateResponse = async ({ sheetName, user, question, answer, timestamp }) => {
     try {
         const sheets = await getSheetsClient();
@@ -123,7 +114,12 @@ const checkIfAnswered = async ({ sheetName, user, question }) => {
     }
 };
 
-// --- Template & General Sheet Management ---
+const getQuestionTextByIndex = async (sheetName, qIndex) => {
+    const sheets = await getSheetsClient();
+    const res = await sheets.spreadsheets.values.get({ spreadsheetId: SHEET_ID, range: `${sheetName}!${METADATA_ROWS.HEADERS}:${METADATA_ROWS.HEADERS}` });
+    return res.data.values[0][qIndex + 2];
+};
+
 const ensureSheetExists = async (sheets, sheetName, headers) => {
     const spreadsheet = await sheets.spreadsheets.get({ spreadsheetId: SHEET_ID, fields: 'sheets.properties.title' });
     const sheetExists = spreadsheet.data.sheets.some(s => s.properties.title === sheetName);
@@ -134,11 +130,13 @@ const ensureSheetExists = async (sheets, sheetName, headers) => {
         }
     }
 };
+
 const saveSurveyTemplate = async ({ templateName, creatorId, surveyData }) => {
     const sheets = await getSheetsClient();
     await ensureSheetExists(sheets, TEMPLATES_SHEET_NAME, ['TemplateName', 'CreatorID', 'SurveyData', 'Timestamp']);
     await sheets.spreadsheets.values.append({ spreadsheetId: SHEET_ID, range: TEMPLATES_SHEET_NAME, valueInputOption: 'USER_ENTERED', resource: { values: [[templateName, creatorId, surveyData, new Date().toISOString()]] } });
 };
+
 const getAllSurveyTemplates = async () => {
     try {
         const sheets = await getSheetsClient();
@@ -150,10 +148,12 @@ const getAllSurveyTemplates = async () => {
         throw e;
     }
 };
+
 const getTemplateByName = async (templateName) => {
     const templates = await getAllSurveyTemplates();
     return templates.find(t => t.TemplateName === templateName);
 };
+
 const deleteSurveyTemplate = async (templateName) => {
     const sheets = await getSheetsClient();
     const res = await sheets.spreadsheets.values.get({ spreadsheetId: SHEET_ID, range: `${TEMPLATES_SHEET_NAME}!A:A` });
@@ -168,12 +168,62 @@ const deleteSurveyTemplate = async (templateName) => {
     });
 };
 
-// --- Reminder Functions ---
-const getAllScheduledSurveys = async () => { /* ... unchanged and complete ... */ };
-const getIncompleteUsers = async (sheetName, recipients) => { /* ... unchanged and complete ... */ };
-const updateLastReminderTimestamp = async (sheetName, timestamp) => { /* ... unchanged and complete ... */ };
+const getAllScheduledSurveys = async () => {
+    try {
+        const sheets = await getSheetsClient();
+        const res = await sheets.spreadsheets.get({ spreadsheetId: SHEET_ID, fields: 'sheets.properties.title' });
+        const allSheetTitles = res.data.sheets.map(s => s.properties.title).filter(t => t !== USER_GROUPS_SHEET_NAME && t !== TEMPLATES_SHEET_NAME);
+        const scheduledSurveys = [];
+        for (const title of allSheetTitles) {
+            try {
+                const metaRes = await sheets.spreadsheets.values.get({ spreadsheetId: SHEET_ID, range: `${title}!B1:B${METADATA_ROWS.LAST_REMINDER}` });
+                const metaVals = metaRes.data.values || [];
+                const reminderHours = parseInt(metaVals[METADATA_ROWS.REMINDER_HOURS - 1]?.[0] || '0', 10);
+                if (reminderHours > 0) {
+                    scheduledSurveys.push({
+                        sheetName: title,
+                        recipients: JSON.parse(metaVals[METADATA_ROWS.RECIPIENTS - 1]?.[0] || '[]'),
+                        reminderMessage: metaVals[METADATA_ROWS.REMINDER_MSG - 1]?.[0] || '',
+                        reminderHours,
+                        lastReminder: metaVals[METADATA_ROWS.LAST_REMINDER - 1]?.[0] || '0',
+                    });
+                }
+            } catch (e) { /* ignore sheets that don't match format */ }
+        }
+        return scheduledSurveys;
+    } catch (e) {
+        console.error("[Sheets Error] in getAllScheduledSurveys:", e.message);
+        return [];
+    }
+};
 
-// --- Group Management (Corrected) ---
+const getIncompleteUsers = async (sheetName, recipients) => {
+    const sheets = await getSheetsClient();
+    const dataRes = await sheets.spreadsheets.values.get({ spreadsheetId: SHEET_ID, range: `${sheetName}!A${METADATA_ROWS.HEADERS}:Z` });
+    if (!dataRes.data.values) return recipients.filter(r => r.id.startsWith('U'));
+    const headers = dataRes.data.values[0];
+    const questionCount = headers.length - 2;
+    const userData = dataRes.data.values.slice(1);
+    const userNamesInSheet = userData.map(row => row[0]);
+    const incompleteRecipients = recipients.filter(recipient => {
+        if (!recipient.id.startsWith('U')) return false;
+        const userSheetIndex = userNamesInSheet.findIndex(name => name === recipient.name);
+        if (userSheetIndex === -1) return true;
+        const userRow = userData[userSheetIndex];
+        let answeredCount = 0;
+        for (let i = 2; i < headers.length; i++) {
+            if (userRow[i]) answeredCount++;
+        }
+        return answeredCount < questionCount;
+    });
+    return incompleteRecipients;
+};
+
+const updateLastReminderTimestamp = async (sheetName, timestamp) => {
+    const sheets = await getSheetsClient();
+    await sheets.spreadsheets.values.update({ spreadsheetId: SHEET_ID, range: `${sheetName}!B${METADATA_ROWS.LAST_REMINDER}`, valueInputOption: 'USER_ENTERED', resource: { values: [[timestamp]] } });
+};
+
 const saveUserGroup = async ({ groupName, creatorId, memberIds }) => {
     const sheets = await getSheetsClient();
     await ensureSheetExists(sheets, USER_GROUPS_SHEET_NAME, ['GroupName', 'CreatorID', 'MemberIDs', 'Timestamp']);
@@ -183,7 +233,7 @@ const saveUserGroup = async ({ groupName, creatorId, memberIds }) => {
 const getAllUserGroups = async () => {
     try {
         const sheets = await getSheetsClient();
-        await ensureSheetExists(sheets, USER_GROUPS_SHEET_NAME);
+        await ensureSheetExists(sheets, USER_GROUPS_SHEET_NAME, ['GroupName', 'CreatorID', 'MemberIDs', 'Timestamp']);
         const res = await sheets.spreadsheets.values.get({ spreadsheetId: SHEET_ID, range: `${USER_GROUPS_SHEET_NAME}!A2:C` });
         if (!res.data.values) return [];
         return res.data.values.map(row => ({ GroupName: row[0], CreatorID: row[1], MemberIDs: row[2] }));
