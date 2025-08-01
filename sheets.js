@@ -12,7 +12,7 @@ const authorize = () => {
 };
 const getSheetsClient = async () => google.sheets({ version: 'v4', auth: await authorize() });
 
-const METADATA_ROWS = { RECIPIENTS: 2, REMINDER_MSG: 3, REMINDER_HOURS: 4, LAST_REMINDER: 5, HEADERS: 6 };
+const METADATA_ROWS = { CREATOR: 1, RECIPIENTS: 2, REMINDER_MSG: 3, REMINDER_HOURS: 4, LAST_REMINDER: 5, HEADERS: 6 };
 
 // --- Survey Setup ---
 const createNewSheetWithDetails = async (sheetName, creatorName, questionHeaders, details) => {
@@ -36,8 +36,64 @@ const saveRecipients = async (sheetName, recipients) => {
 };
 
 // --- Response Handling ---
-const saveOrUpdateResponse = async ({ sheetName, user, question, answer, timestamp }) => { /* Fully implemented in previous answer */ };
-const checkIfAnswered = async ({ sheetName, user, question }) => { /* Fully implemented in previous answer */ };
+const saveOrUpdateResponse = async ({ sheetName, user, question, answer, timestamp }) => {
+    try {
+        const sheets = await getSheetsClient();
+        const headerRes = await sheets.spreadsheets.values.get({ spreadsheetId: SHEET_ID, range: `${sheetName}!${METADATA_ROWS.HEADERS}:${METADATA_ROWS.HEADERS}` });
+        if (!headerRes.data.values) {
+            console.error(`[Sheets Error] Could not find header row in sheet: ${sheetName}`);
+            return;
+        }
+        const headers = headerRes.data.values[0];
+        const questionIndex = headers.indexOf(question);
+        if (questionIndex < 2) {
+            console.error(`[Sheets Error] Could not find question "${question}" in headers of sheet: ${sheetName}`);
+            return;
+        }
+
+        const userRes = await sheets.spreadsheets.values.get({ spreadsheetId: SHEET_ID, range: `${sheetName}!A${METADATA_ROWS.HEADERS + 1}:A` });
+        const users = userRes.data.values ? userRes.data.values.flat() : [];
+        const userRowIndex = users.indexOf(user);
+
+        if (userRowIndex > -1) {
+            const sheetRowNumber = userRowIndex + METADATA_ROWS.HEADERS + 1;
+            await sheets.spreadsheets.values.update({ spreadsheetId: SHEET_ID, range: `${sheetName}!${String.fromCharCode(65 + questionIndex)}${sheetRowNumber}`, valueInputOption: 'USER_ENTERED', resource: { values: [[answer]] } });
+        } else {
+            const newRow = new Array(headers.length).fill('');
+            newRow[0] = user; newRow[1] = timestamp; newRow[questionIndex] = answer;
+            await sheets.spreadsheets.values.append({ spreadsheetId: SHEET_ID, range: sheetName, valueInputOption: 'USER_ENTERED', resource: { values: [newRow] } });
+        }
+    } catch (e) {
+        console.error("[Sheets Error] in saveOrUpdateResponse:", e.message);
+    }
+};
+
+const checkIfAnswered = async ({ sheetName, user, question }) => {
+    try {
+        const sheets = await getSheetsClient();
+        const headerRes = await sheets.spreadsheets.values.get({ spreadsheetId: SHEET_ID, range: `${sheetName}!${METADATA_ROWS.HEADERS}:${METADATA_ROWS.HEADERS}` });
+        if (!headerRes.data.values) return false;
+        const headers = headerRes.data.values[0];
+        const questionIndex = headers.indexOf(question);
+        if (questionIndex < 2) return false;
+
+        const userRes = await sheets.spreadsheets.values.get({ spreadsheetId: SHEET_ID, range: `${sheetName}!A${METADATA_ROWS.HEADERS + 1}:A` });
+        if (!userRes.data.values) return false;
+        const users = userRes.data.values.flat();
+        const userRowIndex = users.indexOf(user);
+
+        if (userRowIndex > -1) {
+            const sheetRowNumber = userRowIndex + METADATA_ROWS.HEADERS + 1;
+            const cellValueRes = await sheets.spreadsheets.values.get({ spreadsheetId: SHEET_ID, range: `${sheetName}!${String.fromCharCode(65 + questionIndex)}${sheetRowNumber}`});
+            return cellValueRes.data.values && cellValueRes.data.values[0][0] !== '';
+        }
+        return false;
+    } catch (e) {
+        console.error("[Sheets Error] in checkIfAnswered:", e.message);
+        return false;
+    }
+};
+
 const getQuestionTextByIndex = async (sheetName, qIndex) => {
     const sheets = await getSheetsClient();
     const res = await sheets.spreadsheets.values.get({ spreadsheetId: SHEET_ID, range: `${sheetName}!${METADATA_ROWS.HEADERS}:${METADATA_ROWS.HEADERS}` });
@@ -57,12 +113,7 @@ const ensureSheetExists = async (sheets, sheetName, headers) => {
 const saveSurveyTemplate = async ({ templateName, creatorId, surveyData }) => {
     const sheets = await getSheetsClient();
     await ensureSheetExists(sheets, TEMPLATES_SHEET_NAME, ['TemplateName', 'CreatorID', 'SurveyData', 'Timestamp']);
-    await sheets.spreadsheets.values.append({
-        spreadsheetId: SHEET_ID,
-        range: TEMPLATES_SHEET_NAME,
-        valueInputOption: 'USER_ENTERED',
-        resource: { values: [[templateName, creatorId, surveyData, new Date().toISOString()]] }
-    });
+    await sheets.spreadsheets.values.append({ spreadsheetId: SHEET_ID, range: TEMPLATES_SHEET_NAME, valueInputOption: 'USER_ENTERED', resource: { values: [[templateName, creatorId, surveyData, new Date().toISOString()]] } });
 };
 
 const getAllSurveyTemplates = async () => {
@@ -72,7 +123,7 @@ const getAllSurveyTemplates = async () => {
         if (!res.data.values) return [];
         return res.data.values.map(row => ({ TemplateName: row[0], CreatorID: row[1], SurveyData: row[2] }));
     } catch (e) {
-        if (e.code === 400) return []; // Sheet doesn't exist yet
+        if (e.code === 400 && e.message.includes('Unable to parse range')) return [];
         throw e;
     }
 };
@@ -87,37 +138,103 @@ const deleteSurveyTemplate = async (templateName) => {
     const res = await sheets.spreadsheets.values.get({ spreadsheetId: SHEET_ID, range: `${TEMPLATES_SHEET_NAME}!A:A` });
     if (!res.data.values) return;
     const rowIndex = res.data.values.findIndex(row => row[0] === templateName);
-    if (rowIndex === -1) return;
-    
+    if (rowIndex === -1 || rowIndex === 0) return;
+
     const sheetInfo = await sheets.spreadsheets.get({ spreadsheetId: SHEET_ID, fields: 'sheets.properties.sheetId,sheets.properties.title' });
     const templateSheetId = sheetInfo.data.sheets.find(s => s.properties.title === TEMPLATES_SHEET_NAME).properties.sheetId;
 
     await sheets.spreadsheets.batchUpdate({
         spreadsheetId: SHEET_ID,
-        resource: { requests: [{ deleteDimension: { range: { sheetId: templateSheetId, dimension: 'ROWS', startIndex: rowIndex + 1, endIndex: rowIndex + 2 } } }] }
+        resource: { requests: [{ deleteDimension: { range: { sheetId: templateSheetId, dimension: 'ROWS', startIndex: rowIndex, endIndex: rowIndex + 1 } } }] }
     });
 };
 
 // --- Reminder Functions ---
-const getAllScheduledSurveys = async () => { /* Fully implemented in previous answer */ };
-const getIncompleteUsers = async (sheetName, recipients) => { /* Fully implemented in previous answer */ };
-const updateLastReminderTimestamp = async (sheetName, timestamp) => { /* Fully implemented in previous answer */ };
+const getAllScheduledSurveys = async () => {
+    const sheets = await getSheetsClient();
+    const res = await sheets.spreadsheets.get({ spreadsheetId: SHEET_ID, fields: 'sheets.properties.title' });
+    const allSheetTitles = res.data.sheets.map(s => s.properties.title).filter(t => t !== USER_GROUPS_SHEET_NAME && t !== TEMPLATES_SHEET_NAME);
+    
+    const scheduledSurveys = [];
+    for (const title of allSheetTitles) {
+        try {
+            const metaRes = await sheets.spreadsheets.values.get({ spreadsheetId: SHEET_ID, range: `${title}!B1:B${METADATA_ROWS.LAST_REMINDER}` });
+            const metaVals = metaRes.data.values || [];
+            const reminderHours = parseInt(metaVals[METADATA_ROWS.REMINDER_HOURS - 1]?.[0] || '0', 10);
+            if (reminderHours > 0) {
+                scheduledSurveys.push({
+                    sheetName: title,
+                    recipients: JSON.parse(metaVals[METADATA_ROWS.RECIPIENTS - 1]?.[0] || '[]'),
+                    reminderMessage: metaVals[METADATA_ROWS.REMINDER_MSG - 1]?.[0] || '',
+                    reminderHours,
+                    lastReminder: metaVals[METADATA_ROWS.LAST_REMINDER - 1]?.[0] || '0',
+                });
+            }
+        } catch (e) { /* ignore sheets that don't match format */ }
+    }
+    return scheduledSurveys;
+};
 
-// --- Group Management (Unchanged) ---
-const saveUserGroup = async ({ groupName, creatorId, memberIds }) => { /* ... */ };
-const getAllUserGroups = async () => { /* ... */ };
-const getGroupMembers = async (groupName) => { /* ... */ };
+const getIncompleteUsers = async (sheetName, recipients) => {
+    const sheets = await getSheetsClient();
+    const dataRes = await sheets.spreadsheets.values.get({ spreadsheetId: SHEET_ID, range: `${sheetName}!A${METADATA_ROWS.HEADERS}:Z` });
+    if (!dataRes.data.values) return recipients.filter(r => r.id.startsWith('U'));
 
-module.exports = { 
-    createNewSheetWithDetails,
-    saveRecipients,
-    saveOrUpdateResponse,
-    checkIfAnswered,
-    getQuestionTextByIndex,
-    saveUserGroup,
-    getAllUserGroups,
-    getGroupMembers,
-    saveSurveyTemplate,
-    getAllSurveyTemplates,
-    getTemplateByName,
-    deleteSurveyTemplate,};
+    const headers = dataRes.data.values[0];
+    const questionCount = headers.length - 2;
+    const userData = dataRes.data.values.slice(1);
+    const userNamesInSheet = userData.map(row => row[0]);
+
+    const incompleteRecipients = recipients.filter(recipient => {
+        if (!recipient.id.startsWith('U')) return false;
+        
+        const userSheetIndex = userNamesInSheet.findIndex(name => name === recipient.name);
+        if (userSheetIndex === -1) return true;
+
+        const userRow = userData[userSheetIndex];
+        let answeredCount = 0;
+        for (let i = 2; i < headers.length; i++) {
+            if (userRow[i]) answeredCount++;
+        }
+        return answeredCount < questionCount;
+    });
+    return incompleteRecipients;
+};
+
+const updateLastReminderTimestamp = async (sheetName, timestamp) => {
+    const sheets = await getSheetsClient();
+    await sheets.spreadsheets.values.update({ spreadsheetId: SHEET_ID, range: `${sheetName}!B${METADATA_ROWS.LAST_REMINDER}`, valueInputOption: 'USER_ENTERED', resource: { values: [[timestamp]] } });
+};
+
+// --- Group Management ---
+const saveUserGroup = async ({ groupName, creatorId, memberIds }) => {
+    const sheets = await getSheetsClient();
+    await ensureSheetExists(sheets, USER_GROUPS_SHEET_NAME, ['GroupName', 'CreatorID', 'MemberIDs', 'Timestamp']);
+    await sheets.spreadsheets.values.append({ spreadsheetId: SHEET_ID, range: USER_GROUPS_SHEET_NAME, valueInputOption: 'USER_ENTERED', resource: { values: [[groupName, creatorId, memberIds, new Date().toISOString()]] } });
+};
+
+const getAllUserGroups = async () => {
+    try {
+        const sheets = await getSheetsClient();
+        const res = await sheets.spreadsheets.values.get({ spreadsheetId: SHEET_ID, range: `${USER_GROUPS_SHEET_NAME}!A2:C` });
+        if (!res.data.values) return [];
+        return res.data.values.map(row => ({ GroupName: row[0], CreatorID: row[1], MemberIDs: row[2] }));
+    } catch (e) {
+        if (e.code === 400 && e.message.includes('Unable to parse range')) return [];
+        throw e;
+    }
+};
+
+const getGroupMembers = async (groupName) => {
+    const groups = await getAllUserGroups();
+    const group = groups.find(g => g.GroupName === groupName);
+    return group ? group.MemberIDs.split(',') : [];
+};
+
+module.exports = {
+    createNewSheetWithDetails, saveRecipients, saveOrUpdateResponse,
+    checkIfAnswered, getQuestionTextByIndex, saveUserGroup, getAllUserGroups,
+    getGroupMembers, saveSurveyTemplate, getAllSurveyTemplates, getTemplateByName,
+    deleteSurveyTemplate, getAllScheduledSurveys, getIncompleteUsers,
+    updateLastReminderTimestamp
+};
