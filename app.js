@@ -5,6 +5,7 @@ const {
     saveOrUpdateResponse,
     checkIfAnswered,
     getQuestionTextByIndex,
+    getSurveyDefinition,
     saveUserGroup,
     getAllUserGroups,
     getGroupMembers,
@@ -44,6 +45,9 @@ const buildQuestionActions = (questionData, sheetName, questionIndex) => {
     let questionOptions = options;
 
     switch (pollFormat) {
+        case 'multiple-choice':
+            elements.push({ type: 'button', text: { type: 'plain_text', text: '📝 Select Options' }, action_id: 'multiple_choice_modal_button', value: JSON.stringify({ sheetName, qIndex: questionIndex }) });
+            break;
         case 'open-ended':
             elements.push({ type: 'button', text: { type: 'plain_text', text: '✍️ Answer Question' }, action_id: 'open_ended_answer_modal', value: JSON.stringify({ sheetName, qIndex: questionIndex }) });
             break;
@@ -78,7 +82,7 @@ const buildQuestionActions = (questionData, sheetName, questionIndex) => {
 const generateModalBlocks = (viewData = {}) => {
     const { questions = [], userGroups = [], templates = [] } = viewData;
     let blocks = [];
-    const questionTypeOptions = [ { text: { type: 'plain_text', text: 'Buttons' }, value: 'buttons' }, { text: { type: 'plain_text', text: 'Dropdown Menu' }, value: 'dropdown' }, { text: { type: 'plain_text', text: 'Open Ended' }, value: 'open-ended' }, { text: { type: 'plain_text', text: 'Agree/Disagree Scale' }, value: 'agree-disagree' }, { text: { type: 'plain_text', text: '1-to-5 Scale' }, value: '1-to-5' }, { text: { type: 'plain_text', text: '1-to-10 Scale' }, value: '1-to-10' }, { text: { type: 'plain_text', text: 'NPS (0-10)' }, value: 'nps' } ];
+    const questionTypeOptions = [ { text: { type: 'plain_text', text: 'Buttons' }, value: 'buttons' }, { text: { type: 'plain_text', text: 'Dropdown Menu' }, value: 'dropdown' }, { text: { type: 'plain_text', text: 'Multiple Choice' }, value: 'multiple-choice' }, { text: { type: 'plain_text', text: 'Open Ended' }, value: 'open-ended' }, { text: { type: 'plain_text', text: 'Agree/Disagree Scale' }, value: 'agree-disagree' }, { text: { type: 'plain_text', text: '1-to-5 Scale' }, value: '1-to-5' }, { text: { type: 'plain_text', text: '1-to-10 Scale' }, value: '1-to-10' }, { text: { type: 'plain_text', text: 'NPS (0-10)' }, value: 'nps' } ];
     if (templates.length > 0) {
         blocks.push({ type: 'input', block_id: 'template_load_block', optional: true, label: { type: 'plain_text', text: 'Load from Template' }, element: { type: 'static_select', action_id: 'load_survey_template', placeholder: { type: 'plain_text', text: 'Choose a template' }, options: templates.map(t => ({ text: { type: 'plain_text', text: t.TemplateName }, value: t.TemplateName })) } });
         blocks.push({ type: 'divider' });
@@ -117,7 +121,6 @@ app.command('/ask', async ({ ack, body, client }) => {
         await client.views.open({ trigger_id: body.trigger_id, view: { type: 'modal', callback_id: 'poll_submission', title: { type: 'plain_text', text: 'Create New Survey' }, submit: { type: 'plain_text', text: 'Send Survey' }, blocks: generateModalBlocks({ userGroups, templates }) }, });
     } catch (error) { console.error("Modal open error:", error); }
 });
-
 app.command('/templates', async ({ ack, body, client }) => {
     await ack();
     const templates = await getAllSurveyTemplates();
@@ -137,12 +140,10 @@ app.action(/^(add|delete)_question_button$|^load_survey_template$/, async ({ ack
     try { await client.views.update({ view_id: body.view.id, hash: body.view.hash, view: { type: 'modal', callback_id: 'poll_submission', title: { type: 'plain_text', text: 'Create New Survey' }, submit: { type: 'plain_text', text: 'Send Survey' }, blocks: generateModalBlocks(viewData) }, });
     } catch(e) { console.error("View update failed:", e.data || e); }
 });
-
 app.action('delete_template_button', async ({ ack, action }) => {
     await ack();
     await deleteSurveyTemplate(action.value);
 });
-
 app.action(/^poll_response_.+$/, async ({ ack, body, client, action }) => {
     await ack();
     try {
@@ -159,15 +160,34 @@ app.action(/^poll_response_.+$/, async ({ ack, body, client, action }) => {
                 private_metadata: JSON.stringify(payload),
                 title: { type: 'plain_text', text: 'Confirm Answer' },
                 submit: { type: 'plain_text', text: 'Confirm' },
-                blocks: [
-                    { type: 'section', text: { type: 'mrkdwn', text: `Your answer for:\n*${question}*` } },
-                    { type: 'section', text: { type: 'mrkdwn', text: `Is:\n>*${payload.label}*` } }
-                ]
+                blocks: [ { type: 'section', text: { type: 'mrkdwn', text: `Your answer for:\n*${question}*` } }, { type: 'section', text: { type: 'mrkdwn', text: `Is:\n>*${payload.label}*` } }]
             }
         });
     } catch (e) { console.error("Error in poll_response action:", e); }
 });
-
+app.action('multiple_choice_modal_button', async ({ ack, body, client, action }) => {
+    await ack();
+    try {
+        const { sheetName, qIndex } = JSON.parse(action.value);
+        const surveyDef = await getSurveyDefinition(sheetName);
+        const question = surveyDef.questions[qIndex];
+        if (!question || !question.options) { return; }
+        await client.views.open({
+            trigger_id: body.trigger_id,
+            view: {
+                type: 'modal',
+                callback_id: 'multiple_choice_submission',
+                private_metadata: JSON.stringify({ sheetName, qIndex, channelId: body.channel.id, messageTs: body.message.ts, blocks: body.message.blocks }),
+                title: { type: 'plain_text', text: 'Select Your Answer(s)' },
+                submit: { type: 'plain_text', text: 'Submit' },
+                blocks: [
+                    { type: 'section', text: { type: 'mrkdwn', text: `*${question.questionText}*` } },
+                    { type: 'input', block_id: 'multi_choice_input_block', label: { type: 'plain_text', text: 'Select all that apply:' }, element: { type: 'checkboxes', action_id: 'multi_choice_checkboxes', options: question.options.map(opt => ({ text: { type: 'mrkdwn', text: opt }, value: opt })) } }
+                ]
+            }
+        });
+    } catch (e) { console.error("Error in multiple_choice_modal_button action:", e); }
+});
 app.action('open_ended_answer_modal', async ({ ack, body, client, action }) => {
     await ack();
     try {
@@ -212,7 +232,8 @@ app.view('poll_submission', async ({ ack, body, view, client }) => {
         const questionTexts = parsedQuestions.map(q => q.questionText);
         const sheetName = `Survey - ${questionTexts[0].substring(0, 40).replace(/[/\\?%*:|'"<>]/g, '')} - ${Date.now()}`;
         const surveyDetails = { reminderMessage: values.reminder_message_block?.reminder_message_input?.value || '', reminderHours: parseInt(values.reminder_schedule_block?.reminder_schedule_select?.selected_option?.value || '0', 10), };
-        await createNewSheetWithDetails(sheetName, creatorName, questionTexts, surveyDetails);
+        const surveyDefJson = JSON.stringify(parsedData);
+        await createNewSheetWithDetails(sheetName, creatorName, questionTexts, surveyDetails, surveyDefJson);
         let allBlocks = [];
         if (parsedData.introMessage) {
             allBlocks.push({ type: 'section', text: { type: 'mrkdwn', text: parsedData.introMessage } });
@@ -245,7 +266,6 @@ app.view('poll_submission', async ({ ack, body, view, client }) => {
         await client.chat.postEphemeral({ user: user, channel: user, text: "Sorry, an unexpected error occurred. Please check the logs." });
     }
 });
-
 app.view('confirm_answer_submission', async ({ ack, body, view, client }) => {
     await ack();
     const user = body.user.id;
@@ -273,7 +293,41 @@ app.view('confirm_answer_submission', async ({ ack, body, view, client }) => {
         await client.chat.postEphemeral({ user, channel: channelId, text: "❌ Sorry, there was an error saving your answer." });
     }
 });
-
+app.view('multiple_choice_submission', async ({ ack, body, view, client }) => {
+    await ack();
+    const user = body.user.id;
+    const { channelId, messageTs, qIndex, sheetName, blocks: originalBlocks } = JSON.parse(view.private_metadata);
+    try {
+        const selectedOptions = view.state.values.multi_choice_input_block.multi_choice_checkboxes.selected_options;
+        const answerLabels = selectedOptions.map(opt => opt.value);
+        if (answerLabels.length === 0) {
+            await client.chat.postEphemeral({ user, channel: channelId, text: "You must select at least one option." });
+            return;
+        }
+        const answerText = answerLabels.join(', ');
+        const userInfo = await client.users.info({ user });
+        const userName = userInfo.user.profile.real_name || userInfo.user.name;
+        const question = await getQuestionTextByIndex(sheetName, qIndex);
+        if (await checkIfAnswered({ sheetName, user: userName, question })) {
+            await client.chat.postEphemeral({ user, channel: channelId, text: "⏩ You've already answered this question." });
+            return;
+        }
+        await saveOrUpdateResponse({ sheetName, user: userName, question, answer: answerText, timestamp: new Date().toISOString() });
+        const blockToReplaceIndex = originalBlocks.findIndex(b => b.block_id === `actions_for_q_${qIndex}`);
+        if (blockToReplaceIndex > -1) {
+            const questionNumber = qIndex + 1;
+            const friendlyAnswers = answerLabels.map(a => `*${a}*`).join(', ');
+            originalBlocks[blockToReplaceIndex] = {
+                type: 'context',
+                elements: [ { type: 'mrkdwn', text: `✅ *Question ${questionNumber}* — You answered: ${friendlyAnswers}` } ]
+            };
+            await client.chat.update({ ts: messageTs, channel: channelId, blocks: originalBlocks, text: 'Survey response updated.' });
+        }
+    } catch(e) {
+        console.error("Error in multiple_choice_submission:", e);
+        await client.chat.postEphemeral({ user, channel: channelId, text: "❌ Sorry, there was an error saving your answer." });
+    }
+});
 app.view('open_ended_submission', async ({ ack, body, view, client }) => {
     await ack();
     const user = body.user.id;
@@ -288,7 +342,6 @@ app.view('open_ended_submission', async ({ ack, body, view, client }) => {
             return;
         }
         await saveOrUpdateResponse({ sheetName, user: userName, question, answer: answerText, timestamp: new Date().toISOString() });
-        
         const blockToReplaceIndex = originalBlocks.findIndex(b => b.block_id === `actions_for_q_${qIndex}`);
         if (blockToReplaceIndex > -1) {
             const questionNumber = qIndex + 1;
