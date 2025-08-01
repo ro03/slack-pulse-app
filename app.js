@@ -140,10 +140,12 @@ app.action(/^(add|delete)_question_button$|^load_survey_template$/, async ({ ack
     try { await client.views.update({ view_id: body.view.id, hash: body.view.hash, view: { type: 'modal', callback_id: 'poll_submission', title: { type: 'plain_text', text: 'Create New Survey' }, submit: { type: 'plain_text', text: 'Send Survey' }, blocks: generateModalBlocks(viewData) }, });
     } catch(e) { console.error("View update failed:", e.data || e); }
 });
+
 app.action('delete_template_button', async ({ ack, action }) => {
     await ack();
     await deleteSurveyTemplate(action.value);
 });
+
 app.action(/^poll_response_.+$/, async ({ ack, body, client, action }) => {
     await ack();
     try {
@@ -164,6 +166,7 @@ app.action(/^poll_response_.+$/, async ({ ack, body, client, action }) => {
         });
     } catch (e) { console.error("Error in poll_response action:", e); }
 });
+
 app.action('multiple_choice_modal_button', async ({ ack, body, client, action }) => {
     await ack();
     try {
@@ -187,6 +190,7 @@ app.action('multiple_choice_modal_button', async ({ ack, body, client, action })
         });
     } catch (e) { console.error("Error in multiple_choice_modal_button action:", e); }
 });
+
 app.action('open_ended_answer_modal', async ({ ack, body, client, action }) => {
     await ack();
     try {
@@ -265,6 +269,7 @@ app.view('poll_submission', async ({ ack, body, view, client }) => {
         await client.chat.postEphemeral({ user: user, channel: user, text: "Sorry, an unexpected error occurred. Please check the logs." });
     }
 });
+
 app.view('confirm_answer_submission', async ({ ack, body, view, client }) => {
     await ack();
     const user = body.user.id;
@@ -294,6 +299,7 @@ app.view('confirm_answer_submission', async ({ ack, body, view, client }) => {
         await client.chat.postEphemeral({ user, channel: channelId, text: "❌ Sorry, there was an error saving your answer." });
     }
 });
+
 app.view('multiple_choice_submission', async ({ ack, body, view, client }) => {
     await ack();
     const user = body.user.id;
@@ -328,6 +334,7 @@ app.view('multiple_choice_submission', async ({ ack, body, view, client }) => {
         await client.chat.postEphemeral({ user, channel: channelId, text: "❌ Sorry, there was an error saving your answer." });
     }
 });
+
 app.view('open_ended_submission', async ({ ack, body, view, client }) => {
     await ack();
     const user = body.user.id;
