@@ -150,7 +150,6 @@ app.action(/^poll_response_.+$/, async ({ ack, body, client, action }) => {
         const payload = JSON.parse(action.type === 'button' ? action.value : action.selected_option.value);
         payload.messageTs = body.message.ts;
         payload.channelId = body.channel.id;
-        payload.blocks = body.message.blocks; 
         const question = await getQuestionTextByIndex(payload.sheetName, payload.qIndex);
         await client.views.open({
             trigger_id: body.trigger_id,
@@ -177,7 +176,7 @@ app.action('multiple_choice_modal_button', async ({ ack, body, client, action })
             view: {
                 type: 'modal',
                 callback_id: 'multiple_choice_submission',
-                private_metadata: JSON.stringify({ sheetName, qIndex, channelId: body.channel.id, messageTs: body.message.ts, blocks: body.message.blocks }),
+                private_metadata: JSON.stringify({ sheetName, qIndex, channelId: body.channel.id, messageTs: body.message.ts }),
                 title: { type: 'plain_text', text: 'Select Your Answer(s)' },
                 submit: { type: 'plain_text', text: 'Submit' },
                 blocks: [
@@ -198,7 +197,7 @@ app.action('open_ended_answer_modal', async ({ ack, body, client, action }) => {
             view: {
                 type: 'modal',
                 callback_id: 'open_ended_submission',
-                private_metadata: JSON.stringify({ sheetName, qIndex, channelId: body.channel.id, messageTs: body.message.ts, blocks: body.message.blocks }),
+                private_metadata: JSON.stringify({ sheetName, qIndex, channelId: body.channel.id, messageTs: body.message.ts }),
                 title: { type: 'plain_text', text: 'Your Answer' },
                 submit: { type: 'plain_text', text: 'Submit' },
                 blocks: [
@@ -269,8 +268,10 @@ app.view('poll_submission', async ({ ack, body, view, client }) => {
 app.view('confirm_answer_submission', async ({ ack, body, view, client }) => {
     await ack();
     const user = body.user.id;
-    const { channelId, messageTs, blocks: originalBlocks, sheetName, label, qIndex } = JSON.parse(view.private_metadata);
+    const { channelId, messageTs, sheetName, label, qIndex } = JSON.parse(view.private_metadata);
     try {
+        const history = await client.conversations.history({ channel: channelId, latest: messageTs, limit: 1, inclusive: true });
+        const originalBlocks = history.messages[0].blocks;
         const userInfo = await client.users.info({ user });
         const userName = userInfo.user.profile.real_name || userInfo.user.name;
         const question = await getQuestionTextByIndex(sheetName, qIndex);
@@ -296,14 +297,13 @@ app.view('confirm_answer_submission', async ({ ack, body, view, client }) => {
 app.view('multiple_choice_submission', async ({ ack, body, view, client }) => {
     await ack();
     const user = body.user.id;
-    const { channelId, messageTs, qIndex, sheetName, blocks: originalBlocks } = JSON.parse(view.private_metadata);
+    const { channelId, messageTs, qIndex, sheetName } = JSON.parse(view.private_metadata);
     try {
+        const history = await client.conversations.history({ channel: channelId, latest: messageTs, limit: 1, inclusive: true });
+        const originalBlocks = history.messages[0].blocks;
         const selectedOptions = view.state.values.multi_choice_input_block.multi_choice_checkboxes.selected_options;
         const answerLabels = selectedOptions.map(opt => opt.value);
-        if (answerLabels.length === 0) {
-            await client.chat.postEphemeral({ user, channel: channelId, text: "You must select at least one option." });
-            return;
-        }
+        if (answerLabels.length === 0) { return; }
         const answerText = answerLabels.join(', ');
         const userInfo = await client.users.info({ user });
         const userName = userInfo.user.profile.real_name || userInfo.user.name;
@@ -331,8 +331,10 @@ app.view('multiple_choice_submission', async ({ ack, body, view, client }) => {
 app.view('open_ended_submission', async ({ ack, body, view, client }) => {
     await ack();
     const user = body.user.id;
-    const { channelId, messageTs, qIndex, sheetName, blocks: originalBlocks } = JSON.parse(view.private_metadata);
+    const { channelId, messageTs, qIndex, sheetName } = JSON.parse(view.private_metadata);
     try {
+        const history = await client.conversations.history({ channel: channelId, latest: messageTs, limit: 1, inclusive: true });
+        const originalBlocks = history.messages[0].blocks;
         const answerText = view.state.values.open_ended_input_block.open_ended_input.value;
         const userInfo = await client.users.info({ user: user });
         const userName = userInfo.user.profile.real_name || userInfo.user.name;
