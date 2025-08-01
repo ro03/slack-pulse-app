@@ -42,7 +42,6 @@ const buildQuestionActions = (questionData, sheetName, questionIndex) => {
     const valuePayload = (label) => JSON.stringify({ sheetName, label, qIndex: questionIndex });
     let elements = [];
     let questionOptions = options;
-
     switch (pollFormat) {
         case 'open-ended':
             elements.push({ type: 'button', text: { type: 'plain_text', text: '✍️ Answer Question' }, action_id: 'open_ended_answer_modal', value: JSON.stringify({ sheetName, qIndex: questionIndex }) });
@@ -136,20 +135,48 @@ app.action(/^(add|delete)_question_button$|^load_survey_template$/, async ({ ack
     try { await client.views.update({ view_id: body.view.id, hash: body.view.hash, view: { type: 'modal', callback_id: 'poll_submission', title: { type: 'plain_text', text: 'Create New Survey' }, submit: { type: 'plain_text', text: 'Send Survey' }, blocks: generateModalBlocks(viewData) }, });
     } catch(e) { console.error("View update failed:", e.data || e); }
 });
+
 app.action('delete_template_button', async ({ ack, action }) => {
     await ack();
     await deleteSurveyTemplate(action.value);
 });
+
 app.action(/^poll_response_.+$/, async ({ ack, body, client, action }) => {
     await ack();
+    const user = body.user.id;
+    const originalBlocks = body.message.blocks;
+    const messageTs = body.message.ts;
+    const channelId = body.channel.id;
     try {
         const payload = JSON.parse(action.type === 'button' ? action.value : action.selected_option.value);
-        payload.messageTs = body.message.ts;
-        payload.channelId = body.channel.id;
-        const question = await getQuestionTextByIndex(payload.sheetName, payload.qIndex);
-        await client.views.open({ trigger_id: body.trigger_id, view: { type: 'modal', callback_id: 'confirm_answer_submission', private_metadata: JSON.stringify(payload), title: { type: 'plain_text', text: 'Confirm Answer' }, submit: { type: 'plain_text', text: 'Confirm' }, blocks: [ { type: 'section', text: { type: 'mrkdwn', text: `Your answer for:\n*${question}*` } }, { type: 'section', text: { type: 'mrkdwn', text: `Is:\n>*${payload.label}*` } }] } });
-    } catch (e) { console.error("Error in poll_response action:", e); }
+        const { sheetName, label, qIndex } = payload;
+        
+        const userInfo = await client.users.info({ user });
+        const userName = userInfo.user.profile.real_name || userInfo.user.name;
+        const questionText = await getQuestionTextByIndex(sheetName, qIndex);
+
+        if (await checkIfAnswered({ sheetName, user: userName, question: questionText })) {
+            await client.chat.postEphemeral({ user, channel: channelId, text: "⏩ You've already answered this question." });
+            return;
+        }
+        
+        await saveOrUpdateResponse({ sheetName, user: userName, question: questionText, answer: label, timestamp: new Date().toISOString() });
+        
+        const blockToReplaceIndex = originalBlocks.findIndex(b => b.block_id === `actions_for_q_${qIndex}`);
+        if (blockToReplaceIndex > -1) {
+            const questionNumber = qIndex + 1;
+            originalBlocks[blockToReplaceIndex] = {
+                type: 'context',
+                elements: [ { type: 'mrkdwn', text: `✅ *Question ${questionNumber}* — You answered: *${label}*` } ]
+            };
+            await client.chat.update({ ts: messageTs, channel: channelId, blocks: originalBlocks, text: `Survey response updated.` });
+        }
+    } catch (error) {
+        console.error("Error processing poll response:", error);
+        await client.chat.postEphemeral({ user, channel: channelId, text: "❌ Sorry, there was an error saving your answer." });
+    }
 });
+
 app.action('open_ended_answer_modal', async ({ ack, body, client, action }) => {
     await ack();
     try {
@@ -160,7 +187,7 @@ app.action('open_ended_answer_modal', async ({ ack, body, client, action }) => {
             view: {
                 type: 'modal',
                 callback_id: 'open_ended_submission',
-                private_metadata: JSON.stringify({ sheetName, qIndex, channelId: body.channel.id, messageTs: body.message.ts }),
+                private_metadata: JSON.stringify({ sheetName, qIndex, channelId: body.channel.id, messageTs: body.message.ts, blocks: body.message.blocks }),
                 title: { type: 'plain_text', text: 'Your Answer' },
                 submit: { type: 'plain_text', text: 'Submit' },
                 blocks: [
@@ -229,45 +256,34 @@ app.view('poll_submission', async ({ ack, body, view, client }) => {
         await client.chat.postEphemeral({ user: user, channel: user, text: "Sorry, an unexpected error occurred. Please check the logs." });
     }
 });
-app.view('confirm_answer_submission', async ({ ack, body, view, client }) => {
-    await ack();
-    const user = body.user.id;
-    const { channelId, messageTs } = JSON.parse(view.private_metadata);
-    try {
-        const { sheetName, label, qIndex } = JSON.parse(view.private_metadata);
-        const userInfo = await client.users.info({ user: user });
-        const userName = userInfo.user.profile.real_name || userInfo.user.name;
-        const question = await getQuestionTextByIndex(sheetName, qIndex);
-        if (await checkIfAnswered({ sheetName, user: userName, question })) {
-            await client.chat.postEphemeral({ channel: channelId, user: user, thread_ts: messageTs, text: "⏩ You've already answered this question." });
-            return;
-        }
-        await saveOrUpdateResponse({ sheetName, user: userName, question, answer: label, timestamp: new Date().toISOString() });
-        await client.chat.postEphemeral({ channel: channelId, user: user, thread_ts: messageTs, text: `✅ Thanks! Your answer "*${label}*" has been recorded.` });
-    } catch(e) {
-        console.error("Error in confirm_answer_submission:", e);
-        await client.chat.postEphemeral({ channel: channelId, user: user, thread_ts: messageTs, text: "❌ Sorry, there was an error saving your answer." });
-    }
-});
+
 app.view('open_ended_submission', async ({ ack, body, view, client }) => {
     await ack();
     const user = body.user.id;
-    const { channelId, messageTs } = JSON.parse(view.private_metadata);
+    const { channelId, messageTs, qIndex, sheetName, blocks: originalBlocks } = JSON.parse(view.private_metadata);
     try {
-        const { sheetName, qIndex } = JSON.parse(view.private_metadata);
         const answerText = view.state.values.open_ended_input_block.open_ended_input.value;
         const userInfo = await client.users.info({ user: user });
         const userName = userInfo.user.profile.real_name || userInfo.user.name;
         const question = await getQuestionTextByIndex(sheetName, qIndex);
         if (await checkIfAnswered({ sheetName, user: userName, question })) {
-            await client.chat.postEphemeral({ channel: channelId, user: user, thread_ts: messageTs, text: "⏩ You've already answered this question." });
+            await client.chat.postEphemeral({ channel: channelId, user: user, text: "⏩ You've already answered this question." });
             return;
         }
         await saveOrUpdateResponse({ sheetName, user: userName, question, answer: answerText, timestamp: new Date().toISOString() });
-        await client.chat.postEphemeral({ channel: channelId, user: user, thread_ts: messageTs, text: `✅ Thanks! We've recorded your answer.` });
+        
+        const blockToReplaceIndex = originalBlocks.findIndex(b => b.block_id === `actions_for_q_${qIndex}`);
+        if (blockToReplaceIndex > -1) {
+            const questionNumber = qIndex + 1;
+            originalBlocks[blockToReplaceIndex] = {
+                type: 'context',
+                elements: [ { type: 'mrkdwn', text: `✅ *Question ${questionNumber}* — You answered.` } ]
+            };
+            await client.chat.update({ ts: messageTs, channel: channelId, blocks: originalBlocks, text: 'Survey response updated.' });
+        }
     } catch(e) {
         console.error("Error in open_ended_submission:", e);
-        await client.chat.postEphemeral({ channel: channelId, user: user, thread_ts: messageTs, text: "❌ Sorry, there was an error saving your answer." });
+        await client.chat.postEphemeral({ channel: channelId, user: user, text: "❌ Sorry, there was an error saving your answer." });
     }
 });
 
