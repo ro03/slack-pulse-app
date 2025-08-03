@@ -13,6 +13,8 @@ const {
     getAllSurveyTemplates,
     getTemplateByName,
     deleteSurveyTemplate,
+    getSurveysByCreator,
+    getSurveyResults 
 } = require('./sheets');
 const { startScheduler } = require('./scheduler');
 
@@ -129,6 +131,49 @@ app.command('/templates', async ({ ack, body, client }) => {
     await client.views.open({ trigger_id: body.trigger_id, view: { type: 'modal', title: { type: 'plain_text', text: 'Manage Templates' }, blocks } });
 });
 
+app.command('/survey-results', async ({ ack, body, client }) => {
+    await ack();
+    try {
+        const userSurveys = await getSurveysByCreator(body.user_id);
+        if (userSurveys.length === 0) {
+            await client.chat.postEphemeral({
+                user: body.user_id,
+                channel: body.channel_id,
+                text: "You haven't created any surveys yet."
+            });
+            return;
+        }
+
+        await client.views.open({
+            trigger_id: body.trigger_id,
+            view: {
+                type: 'modal',
+                callback_id: 'view_survey_results',
+                title: { type: 'plain_text', text: 'View Survey Results' },
+                submit: { type: 'plain_text', text: 'Get Results' },
+                blocks: [
+                    {
+                        type: 'input',
+                        block_id: 'survey_selection_block',
+                        label: { type: 'plain_text', text: 'Select a survey' },
+                        element: {
+                            type: 'static_select',
+                            action_id: 'survey_select_action',
+                            placeholder: { type: 'plain_text', text: 'Choose a survey' },
+                            options: userSurveys.map(name => ({
+                                text: { type: 'plain_text', text: name },
+                                value: name
+                            }))
+                        }
+                    }
+                ]
+            }
+        });
+    } catch (error) {
+        console.error("Error in /survey-results command:", error);
+    }
+});
+
 // --- Action Handlers ---
 app.action(/^(add|delete)_question_button$|^load_survey_template$/, async ({ ack, body, client, action }) => {
     await ack();
@@ -214,6 +259,7 @@ app.view('poll_submission', async ({ ack, body, view, client }) => {
     await ack();
     const user = body.user.id;
     try {
+        const user = body.user.id; // This is the creator's ID
         const values = view.state.values;
         const creatorInfo = await client.users.info({ user: user });
         const creatorName = creatorInfo.user.profile.real_name || creatorInfo.user.name;
@@ -232,7 +278,7 @@ app.view('poll_submission', async ({ ack, body, view, client }) => {
         const sheetName = `Survey - ${questionTexts[0].substring(0, 40).replace(/[/\\?%*:|'"<>]/g, '')} - ${Date.now()}`;
         const surveyDetails = { reminderMessage: values.reminder_message_block?.reminder_message_input?.value || '', reminderHours: parseInt(values.reminder_schedule_block?.reminder_schedule_select?.selected_option?.value || '0', 10), };
         const surveyDefJson = JSON.stringify(parsedData);
-        await createNewSheetWithDetails(sheetName, creatorName, questionTexts, surveyDetails, surveyDefJson);
+        await createNewSheetWithDetails(sheetName, creatorName, user, questionTexts, surveyDetails, surveyDefJson);
         let allBlocks = [];
         if (parsedData.introMessage) {
             allBlocks.push({ type: 'section', text: { type: 'mrkdwn', text: parsedData.introMessage } });
@@ -356,6 +402,70 @@ app.view('open_ended_submission', async ({ ack, body, view, client }) => {
     } catch(e) {
         console.error("Error in open_ended_submission:", e);
         await client.chat.postEphemeral({ channel: channelId, user: user, text: "❌ Sorry, there was an error saving your answer." });
+    }
+});
+
+app.view('view_survey_results', async ({ ack, body, view, client }) => {
+    await ack();
+    const user = body.user.id;
+    const selectedSheet = view.state.values.survey_selection_block.survey_select_action.selected_option.value;
+
+    try {
+        const results = await getSurveyResults(selectedSheet);
+
+        if (!results || results.responses.length === 0) {
+            await client.chat.postMessage({
+                channel: user,
+                text: `No responses have been recorded for the survey: *${selectedSheet}*`
+            });
+            return;
+        }
+
+        let resultBlocks = [
+            {
+                type: 'header',
+                text: { type: 'plain_text', text: `📊 Results for: ${selectedSheet}` }
+            }
+        ];
+
+        // The first two headers are 'User' and 'Timestamp'
+        const questionHeaders = results.headers.slice(2);
+
+        results.responses.forEach(response => {
+            resultBlocks.push({ type: 'divider' });
+            let responseFields = [];
+            
+            // Add all question/answer pairs
+            questionHeaders.forEach(q => {
+                if (response[q]) { // Only show answered questions
+                    responseFields.push({ type: 'mrkdwn', text: `*${q}*\n>${response[q]}` });
+                }
+            });
+
+            if(responseFields.length > 0) {
+                 resultBlocks.push({
+                    type: 'section',
+                    text: { type: 'mrkdwn', text: `👤 *${response.User}* answered:`}
+                });
+                resultBlocks.push({
+                    type: 'section',
+                    fields: responseFields
+                });
+            }
+        });
+
+        await client.chat.postMessage({
+            channel: user,
+            text: `Here are the results for your survey: ${selectedSheet}`,
+            blocks: resultBlocks
+        });
+
+    } catch (error) {
+        console.error("Error fetching/sending survey results:", error);
+        await client.chat.postMessage({
+            channel: user,
+            text: `❌ Sorry, an error occurred while fetching the results for *${selectedSheet}*.`
+        });
     }
 });
 
