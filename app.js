@@ -136,14 +136,17 @@ app.command('/survey-results', async ({ ack, body, client }) => {
     try {
         const userSurveys = await getSurveysByCreator(body.user_id);
         if (userSurveys.length === 0) {
+            // THE FIX IS HERE:
+            // Post the message directly to the user, not the channel.
             await client.chat.postEphemeral({
                 user: body.user_id,
-                channel: body.channel_id,
+                channel: body.user_id, // Changed from body.channel_id
                 text: "You haven't created any surveys yet."
             });
             return;
         }
 
+        // The rest of your code for opening the modal is correct and does not need to be changed.
         await client.views.open({
             trigger_id: body.trigger_id,
             view: {
@@ -171,6 +174,12 @@ app.command('/survey-results', async ({ ack, body, client }) => {
         });
     } catch (error) {
         console.error("Error in /survey-results command:", error);
+        // It's also good practice to notify the user of the error
+        await client.chat.postEphemeral({
+            user: body.user_id,
+            channel: body.user_id, // Also change it here for consistency
+            text: "Sorry, an error occurred while trying to fetch your surveys. Please check the application logs."
+        });
     }
 });
 
