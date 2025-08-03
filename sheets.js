@@ -25,16 +25,23 @@ const authorize = () => {
 
 const getSheetsClient = async () => google.sheets({ version: 'v4', auth: await authorize() });
 
-const METADATA_ROWS = { 
-    CREATOR: 1, RECIPIENTS: 2, REMINDER_MSG: 3, REMINDER_HOURS: 4, 
-    LAST_REMINDER: 5, DEFINITION: 6, HEADERS: 7
+const METADATA_ROWS = {
+    CREATOR: 1,
+    CREATOR_ID: 2, // New row
+    RECIPIENTS: 3,
+    REMINDER_MSG: 4,
+    REMINDER_HOURS: 5,
+    LAST_REMINDER: 6,
+    DEFINITION: 7,
+    HEADERS: 8 // Adjust all subsequent rows
 };
 
-const createNewSheetWithDetails = async (sheetName, creatorName, questionHeaders, details, surveyDefJson) => {
+const createNewSheetWithDetails = async (sheetName, creatorName, creatorId, questionHeaders, details, surveyDefJson) => {
     const sheets = await getSheetsClient();
     await sheets.spreadsheets.batchUpdate({ spreadsheetId: SHEET_ID, resource: { requests: [{ addSheet: { properties: { title: sheetName } } }] } });
     const metadata = [
         ['Survey Creator:', creatorName],
+        ['Creator ID:', creatorId], // Add creator ID here
         ['Recipients:', '[]'],
         ['Reminder Message:', details.reminderMessage || ''],
         ['Reminder Hours:', details.reminderHours || 0],
@@ -42,9 +49,11 @@ const createNewSheetWithDetails = async (sheetName, creatorName, questionHeaders
         ['Survey Definition:', surveyDefJson || '{}'],
         ['User', 'Timestamp', ...questionHeaders]
     ];
+    // Adjust the range to account for the new row
     await sheets.spreadsheets.values.update({ spreadsheetId: SHEET_ID, range: `${sheetName}!A1`, valueInputOption: 'USER_ENTERED', resource: { values: metadata } });
     return true;
 };
+
 
 const saveRecipients = async (sheetName, recipients) => {
     const sheets = await getSheetsClient();
@@ -249,10 +258,58 @@ const getGroupMembers = async (groupName) => {
     return group ? group.MemberIDs.split(',') : [];
 };
 
+
+const getSurveysByCreator = async (creatorId) => {
+    try {
+        const sheets = await getSheetsClient();
+        const res = await sheets.spreadsheets.get({ spreadsheetId: SHEET_ID, fields: 'sheets.properties.title' });
+        const allSheetTitles = res.data.sheets.map(s => s.properties.title).filter(t => t !== USER_GROUPS_SHEET_NAME && t !== TEMPLATES_SHEET_NAME);
+
+        const creatorSurveys = [];
+        for (const title of allSheetTitles) {
+            try {
+                const metaRes = await sheets.spreadsheets.values.get({ spreadsheetId: SHEET_ID, range: `${title}!B${METADATA_ROWS.CREATOR_ID}` });
+                const storedCreatorId = metaRes.data.values?.[0]?.[0];
+                if (storedCreatorId === creatorId) {
+                    creatorSurveys.push(title);
+                }
+            } catch (e) { /* Ignore sheets that don't match the format */ }
+        }
+        return creatorSurveys;
+    } catch (e) {
+        console.error("[Sheets Error] in getSurveysByCreator:", e.message);
+        return [];
+    }
+};
+
+const getSurveyResults = async (sheetName) => {
+    try {
+        const sheets = await getSheetsClient();
+        // Fetch headers and all data rows
+        const dataRes = await sheets.spreadsheets.values.get({ spreadsheetId: SHEET_ID, range: `${sheetName}!A${METADATA_ROWS.HEADERS}:Z` });
+        if (!dataRes.data.values || dataRes.data.values.length < 2) {
+            return { headers: [], responses: [] }; // No responses yet
+        }
+        const headers = dataRes.data.values[0];
+        const responses = dataRes.data.values.slice(1).map(row => {
+            let responseObj = {};
+            headers.forEach((header, index) => {
+                responseObj[header] = row[index] || '';
+            });
+            return responseObj;
+        });
+        return { headers, responses };
+    } catch (e) {
+        console.error(`[Sheets Error] in getSurveyResults for ${sheetName}:`, e.message);
+        return null;
+    }
+};
+
 module.exports = {
     createNewSheetWithDetails, saveRecipients, getSurveyDefinition, saveOrUpdateResponse,
     checkIfAnswered, getQuestionTextByIndex, saveUserGroup, getAllUserGroups,
     getGroupMembers, saveSurveyTemplate, getAllSurveyTemplates, getTemplateByName,
     deleteSurveyTemplate, getAllScheduledSurveys, getIncompleteUsers,
-    updateLastReminderTimestamp
+    updateLastReminderTimestamp, getSurveysByCreator,
+    getSurveyResults
 };
