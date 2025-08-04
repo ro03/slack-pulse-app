@@ -354,6 +354,42 @@ app.action(/^poll_response_.+$/, async ({ ack, body, client, action }) => {
         payload.messageTs = body.message.ts;
         payload.channelId = body.channel.id;
         const question = await getQuestionTextByIndex(payload.sheetName, payload.qIndex);
+
+        if (payload.label.toLowerCase() === 'other') {
+            await client.views.open({
+                trigger_id: body.trigger_id,
+                view: {
+                    type: 'modal',
+                    callback_id: 'other_option_submission', // A new callback_id for this specific case
+                    private_metadata: JSON.stringify({
+                        sheetName: payload.sheetName,
+                        qIndex: payload.qIndex,
+                        channelId: body.channel.id,
+                        messageTs: body.message.ts
+                    }),
+                    title: { type: 'plain_text', text: 'Specify Your Answer' },
+                    submit: { type: 'plain_text', text: 'Submit' },
+                    blocks: [
+                        {
+                            type: 'section',
+                            text: { type: 'mrkdwn', text: `*Question:*\n>${question}` }
+                        },
+                        {
+                            type: 'input',
+                            block_id: 'other_input_block',
+                            label: { type: 'plain_text', text: 'Please specify your "Other" answer:' },
+                            element: {
+                                type: 'plain_text_input',
+                                action_id: 'other_input',
+                                multiline: true
+                            }
+                        }
+                    ]
+                }
+            });
+            return; // Stop execution to prevent the default confirmation modal
+        }
+        
         await client.views.open({
             trigger_id: body.trigger_id,
             view: {
@@ -699,6 +735,45 @@ app.view('user_group_submission', async ({ ack, body, view, client }) => {
             channel: creatorId,
             text: `❌ There was an error saving the group. Please check the logs.`
         });
+    }
+});
+
+// In app.js
+app.view('other_option_submission', async ({ ack, body, view, client }) => {
+    await ack();
+    const user = body.user.id;
+    const { channelId, messageTs, qIndex, sheetName } = JSON.parse(view.private_metadata);
+
+    try {
+        const history = await client.conversations.history({ channel: channelId, latest: messageTs, limit: 1, inclusive: true });
+        const originalBlocks = history.messages[0].blocks;
+        
+        const answerText = view.state.values.other_input_block.other_input.value;
+        const finalAnswer = `Other: ${answerText}`; // Prefix the answer for clarity in results
+
+        const userInfo = await client.users.info({ user: user });
+        const userName = userInfo.user.profile.real_name || userInfo.user.name;
+        const question = await getQuestionTextByIndex(sheetName, qIndex);
+        
+        if (await checkIfAnswered({ sheetName, user: userName, question })) {
+            await client.chat.postEphemeral({ channel: channelId, user: user, text: "⏩ You've already answered this question." });
+            return;
+        }
+        
+        await saveOrUpdateResponse({ sheetName, user: userName, question, answer: finalAnswer, timestamp: new Date().toISOString() });
+        
+        const blockToReplaceIndex = originalBlocks.findIndex(b => b.block_id === `actions_for_q_${qIndex}`);
+        if (blockToReplaceIndex > -1) {
+            const questionNumber = qIndex + 1;
+            originalBlocks[blockToReplaceIndex] = {
+                type: 'context',
+                elements: [ { type: 'mrkdwn', text: `✅ *Question ${questionNumber}* — You answered: *${finalAnswer}*` } ]
+            };
+            await client.chat.update({ ts: messageTs, channel: channelId, blocks: originalBlocks, text: 'Survey response updated.' });
+        }
+    } catch(e) {
+        console.error("Error in other_option_submission:", e);
+        await client.chat.postEphemeral({ channel: channelId, user: user, text: "❌ Sorry, there was an error saving your answer." });
     }
 });
 
