@@ -82,7 +82,7 @@ const buildQuestionActions = (questionData, sheetName, questionIndex) => {
 
 // --- Helper: Generate Survey Modal Blocks ---
 const generateModalBlocks = (viewData = {}) => {
-    const { questions = [], userGroups = [], templates = [], surveyTitle = []} = viewData;
+    const { questions = [], userGroups = [], templates = [], surveyTitle = '' } = viewData;
     let blocks = [];
     const questionTypeOptions = [ { text: { type: 'plain_text', text: 'Buttons' }, value: 'buttons' }, { text: { type: 'plain_text', text: 'Dropdown Menu' }, value: 'dropdown' }, { text: { type: 'plain_text', text: 'Multiple Choice' }, value: 'multiple-choice' }, { text: { type: 'plain_text', text: 'Open Ended' }, value: 'open-ended' }, { text: { type: 'plain_text', text: 'Agree/Disagree Scale' }, value: 'agree-disagree' }, { text: { type: 'plain_text', text: '1-to-5 Scale' }, value: '1-to-5' }, { text: { type: 'plain_text', text: '1-to-10 Scale' }, value: '1-to-10' }, { text: { type: 'plain_text', text: 'NPS (0-10)' }, value: 'nps' } ];
     if (templates.length > 0) {
@@ -90,7 +90,7 @@ const generateModalBlocks = (viewData = {}) => {
         blocks.push({ type: 'divider' });
     }
 
-     blocks.push({
+    blocks.push({
         type: 'input',
         block_id: 'survey_title_block',
         label: { type: 'plain_text', text: 'Survey Title' },
@@ -98,7 +98,7 @@ const generateModalBlocks = (viewData = {}) => {
             type: 'plain_text_input',
             action_id: 'survey_title_input',
             placeholder: { type: 'plain_text', text: 'e.g., Q3 Engineering Feedback' },
-            initial_value: surveyTitle // Pre-fills the title when loading a template
+            initial_value: surveyTitle // This will now correctly receive an empty string '' by default
         }
     });
     
