@@ -126,7 +126,7 @@ const parseModalState = (values) => {
     let questions = [];
     const questionKeys = Object.keys(values).filter(k => k.startsWith('question_block_')).map(k => parseInt(k.split('_')[2], 10)).sort((a,b) => a-b);
     for (const i of questionKeys) { questions.push({ questionText: values[`question_block_${i}`]?.[`question_input_${i}`]?.value || '', options: (values[`options_block_${i}`]?.[`options_input_${i}`]?.value || '').split('\n').filter(Boolean), pollFormat: values[`format_block_${i}`]?.[`format_select_${i}`]?.selected_option?.value || 'buttons', }); }
-    return { introMessage: values.intro_message_block?.intro_message_input?.value || '', questions: questions, };
+    return {surveyTitle: values.survey_title_block?.survey_title_input?.value || '', introMessage: values.intro_message_block?.intro_message_input?.value || '', questions: questions, };
 };
 
 // --- Helper: Find and replace @username with <@USER_ID> ---
