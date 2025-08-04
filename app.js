@@ -82,7 +82,7 @@ const buildQuestionActions = (questionData, sheetName, questionIndex) => {
 
 // --- Helper: Generate Survey Modal Blocks ---
 const generateModalBlocks = (viewData = {}) => {
-    const { questions = [], userGroups = [], templates = [] } = viewData;
+    const { questions = [], userGroups = [], templates = [], surveyTitle = []} = viewData;
     let blocks = [];
     const questionTypeOptions = [ { text: { type: 'plain_text', text: 'Buttons' }, value: 'buttons' }, { text: { type: 'plain_text', text: 'Dropdown Menu' }, value: 'dropdown' }, { text: { type: 'plain_text', text: 'Multiple Choice' }, value: 'multiple-choice' }, { text: { type: 'plain_text', text: 'Open Ended' }, value: 'open-ended' }, { text: { type: 'plain_text', text: 'Agree/Disagree Scale' }, value: 'agree-disagree' }, { text: { type: 'plain_text', text: '1-to-5 Scale' }, value: '1-to-5' }, { text: { type: 'plain_text', text: '1-to-10 Scale' }, value: '1-to-10' }, { text: { type: 'plain_text', text: 'NPS (0-10)' }, value: 'nps' } ];
     if (templates.length > 0) {
