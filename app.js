@@ -443,7 +443,7 @@ if (!parsedData.surveyTitle.trim()) {
         // ... (The existing code for creating the sheet and survey details remains the same)
         const questionTexts = parsedQuestions.map(q => q.questionText);
         const sanitizedTitle = parsedData.surveyTitle.substring(0, 80).replace(/[/\\?%*:|'"<>]/g, '');
-        const sheetName = `Survey - ${sanitizedTitle} - ${Date.now()}`;
+        const sheetName = `${sanitizedTitle}`;
         const surveyDetails = { reminderMessage: values.reminder_message_block?.reminder_message_input?.value || '', reminderHours: parseInt(values.reminder_schedule_block?.reminder_schedule_select?.selected_option?.value || '0', 10), };
         const surveyDefJson = JSON.stringify(parsedData);
         await createNewSheetWithDetails(sheetName, creatorName, user, questionTexts, surveyDetails, surveyDefJson);
