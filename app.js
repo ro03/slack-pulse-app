@@ -89,6 +89,20 @@ const generateModalBlocks = (viewData = {}) => {
         blocks.push({ type: 'input', block_id: 'template_load_block', optional: true, label: { type: 'plain_text', text: 'Load from Template' }, element: { type: 'static_select', action_id: 'load_survey_template', placeholder: { type: 'plain_text', text: 'Choose a template' }, options: templates.map(t => ({ text: { type: 'plain_text', text: t.TemplateName }, value: t.TemplateName })) } });
         blocks.push({ type: 'divider' });
     }
+
+     blocks.push({
+        type: 'input',
+        block_id: 'survey_title_block',
+        label: { type: 'plain_text', text: 'Survey Title' },
+        element: {
+            type: 'plain_text_input',
+            action_id: 'survey_title_input',
+            placeholder: { type: 'plain_text', text: 'e.g., Q3 Engineering Feedback' },
+            initial_value: surveyTitle // Pre-fills the title when loading a template
+        }
+    });
+    
+    
     blocks.push( { type: 'header', text: { type: 'plain_text', text: 'Survey Introduction' } }, { type: 'input', block_id: 'intro_message_block', optional: true, label: { type: 'plain_text', text: 'Introductory Message (use [firstName])' }, element: { type: 'plain_text_input', multiline: true, action_id: 'intro_message_input', initial_value: viewData.introMessage || '' } } );
     questions.forEach((q, index) => {
         const i = index + 1;
@@ -301,6 +315,7 @@ app.action(/^(add|delete)_question_button$|^load_survey_template$/, async ({ ack
             // Instead of replacing viewData, we merge the data from the template.
             // This is more robust and preserves other properties.
             const templateData = JSON.parse(template.SurveyData);
+             viewData.surveyTitle = templateData.surveyTitle || '';
             viewData.introMessage = templateData.introMessage || '';
             viewData.questions = templateData.questions || [];
         }
@@ -414,6 +429,12 @@ app.view('poll_submission', async ({ ack, body, view, client }) => {
         const conversationIds = Array.from(finalConversationIds);
         if (conversationIds.length === 0) { await client.chat.postEphemeral({ user: user, channel: user, text: "⚠️ Survey not sent. You must select at least one destination channel or group." }); return; }
         const parsedData = parseModalState(values);
+
+if (!parsedData.surveyTitle.trim()) {
+            await client.chat.postEphemeral({ user: user, channel: user, text: "⚠️ Survey not sent. You must provide a survey title." });
+            return;
+        }
+        
         const parsedQuestions = parsedData.questions.filter(q => q.questionText && q.questionText.trim() !== '');
         if (parsedQuestions.length === 0) { await client.chat.postEphemeral({ user: user, channel: user, text: "⚠️ Survey not sent. You must add at least one question." }); return; }
         const templateNameToSave = values.template_save_block?.template_save_name_input?.value;
@@ -421,7 +442,8 @@ app.view('poll_submission', async ({ ack, body, view, client }) => {
 
         // ... (The existing code for creating the sheet and survey details remains the same)
         const questionTexts = parsedQuestions.map(q => q.questionText);
-        const sheetName = `Survey - ${questionTexts[0].substring(0, 40).replace(/[/\\?%*:|'"<>]/g, '')} - ${Date.now()}`;
+        const sanitizedTitle = parsedData.surveyTitle.substring(0, 80).replace(/[/\\?%*:|'"<>]/g, '');
+        const sheetName = `Survey - ${sanitizedTitle} - ${Date.now()}`;
         const surveyDetails = { reminderMessage: values.reminder_message_block?.reminder_message_input?.value || '', reminderHours: parseInt(values.reminder_schedule_block?.reminder_schedule_select?.selected_option?.value || '0', 10), };
         const surveyDefJson = JSON.stringify(parsedData);
         await createNewSheetWithDetails(sheetName, creatorName, user, questionTexts, surveyDetails, surveyDefJson);
