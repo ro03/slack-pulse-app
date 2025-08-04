@@ -347,48 +347,3206 @@ app.action('delete_template_button', async ({ ack, action }) => {
     await ack();
     await deleteSurveyTemplate(action.value);
 });
-app.action(/^poll_response_.+$/, async ({ ack, body, client, action }) => {
-    await ack();
-    try {
-        const payload = JSON.parse(action.type === 'button' ? action.value : action.selected_option.value);
-        payload.messageTs = body.message.ts;
-        payload.channelId = body.channel.id;
-        const question = await getQuestionTextByIndex(payload.sheetName, payload.qIndex);
-
-        if (payload.label.toLowerCase() === 'other') {
-            await client.views.open({
-                trigger_id: body.trigger_id,
-                view: {
-                    type: 'modal',
-                    callback_id: 'other_option_submission', // A new callback_id for this specific case
-                    private_metadata: JSON.stringify({
-                        sheetName: payload.sheetName,
-                        qIndex: payload.qIndex,
-                        channelId: body.channel.id,
-                        messageTs: body.message.ts
-                    }),
-                    title: { type: 'plain_text', text: 'Specify Your Answer' },
-                    submit: { type: 'plain_text', text: 'Submit' },
-                    blocks: [
-                        {
-                            type: 'section',
-                            text: { type: 'mrkdwn', text: `*Question:*\n>${question}` }
-                        },
-                        {
-                            type: 'input',
-                            block_id: 'other_input_block',
-                            label: { type: 'plain_text', text: 'Please specify your "Other" answer:' },
-                            element: {
-                                type: 'plain_text_input',
-                                action_id: 'other_input',
-                                multiline: true
-                            }
-                        }
-                    ]
-                }
-            });
-            return; // Stop execution to prevent the default confirmation modal
-        }
+Error in poll_response action: GaxiosError: Quota exceeded for quota metric 'Read requests' and limit 'Read requests per minute per user' of service 'sheets.googleapis.com' for consumer 'project_number:668384902392'.
+    at Gaxios._request (/opt/render/project/src/node_modules/gaxios/build/cjs/src/gaxios.js:154:23)
+    at process.processTicksAndRejections (node:internal/process/task_queues:105:5)
+    at async JWT.requestAsync (/opt/render/project/src/node_modules/google-auth-library/build/src/auth/oauth2client.js:463:20)
+    at async createAPIRequestAsync (/opt/render/project/src/node_modules/googleapis-common/build/src/apirequest.js:308:25)
+    at async getQuestionTextByIndex (/opt/render/project/src/sheets.js:128:17)
+    at async /opt/render/project/src/app.js:356:26
+    at async Array.<anonymous> (/opt/render/project/src/node_modules/@slack/bolt/dist/middleware/builtin.js:175:9)
+    at async Array.onlyActions (/opt/render/project/src/node_modules/@slack/bolt/dist/middleware/builtin.js:34:9)
+    at async Promise.allSettled (index 6)
+    at async /opt/render/project/src/node_modules/@slack/bolt/dist/App.js:678:48 {
+  config: {
+    url: URL {
+      href: 'https://sheets.googleapis.com/v4/spreadsheets/1fP-yFjBdBDqXVAp8AVHI9rdo-dnwJA-mXRmApkUa6rE/values/Survey-1%218%3A8',
+      origin: 'https://sheets.googleapis.com',
+      protocol: 'https:',
+      username: '',
+      password: '',
+      host: 'sheets.googleapis.com',
+      hostname: 'sheets.googleapis.com',
+      port: '',
+      pathname: '/v4/spreadsheets/1fP-yFjBdBDqXVAp8AVHI9rdo-dnwJA-mXRmApkUa6rE/values/Survey-1%218%3A8',
+      search: '',
+      searchParams: URLSearchParams {},
+      hash: ''
+    },
+    method: 'GET',
+    apiVersion: '',
+    userAgentDirectives: [ [Object] ],
+    headers: Headers {
+      'accept-encoding': 'gzip',
+      authorization: '<<REDACTED> - See `errorRedactor` option in `gaxios` for configuration>.',
+      'user-agent': 'google-api-nodejs-client/8.0.0 (gzip)',
+      'x-goog-api-client': 'gdcl/8.0.0 gl-node/22.16.0'
+    },
+    validateStatus: [Function (anonymous)],
+    retry: true,
+    responseType: 'unknown',
+    errorRedactor: [Function: defaultErrorRedactor],
+    retryConfig: {
+      currentRetryAttempt: 3,
+      retry: 3,
+      httpMethodsToRetry: [Array],
+      noResponseRetries: 2,
+      retryDelayMultiplier: 2,
+      timeOfFirstRequest: 1754301388822,
+      totalTimeout: 9007199254740991,
+      maxRetryDelay: 9007199254740991,
+      statusCodesToRetry: [Array]
+    }
+  },
+  response: Response {
+    size: 0,
+    data: { error: [Object] },
+    config: {
+      url: URL {},
+      method: 'GET',
+      apiVersion: '',
+      userAgentDirectives: [Array],
+      headers: Headers {
+        'accept-encoding': 'gzip',
+        authorization: '<<REDACTED> - See `errorRedactor` option in `gaxios` for configuration>.',
+        'user-agent': 'google-api-nodejs-client/8.0.0 (gzip)',
+        'x-goog-api-client': 'gdcl/8.0.0 gl-node/22.16.0'
+      },
+      validateStatus: [Function (anonymous)],
+      retry: true,
+      responseType: 'unknown',
+      errorRedactor: [Function: defaultErrorRedactor],
+      retryConfig: [Object]
+    },
+    [Symbol(Body internals)]: {
+      body: [Gunzip],
+      stream: [Gunzip],
+      boundary: null,
+      disturbed: true,
+      error: null
+    },
+    [Symbol(Response internals)]: {
+      type: 'default',
+      url: 'https://sheets.googleapis.com/v4/spreadsheets/1fP-yFjBdBDqXVAp8AVHI9rdo-dnwJA-mXRmApkUa6rE/values/Survey-1%218%3A8',
+      status: 429,
+      statusText: 'Too Many Requests',
+      headers: [Object],
+      counter: 0,
+      highWaterMark: 16384
+    }
+  },
+  code: 429,
+  status: 429,
+  error: undefined,
+  [Symbol(gaxios-gaxios-error)]: '7.1.1',
+  [cause]: {
+    message: "Quota exceeded for quota metric 'Read requests' and limit 'Read requests per minute per user' of service 'sheets.googleapis.com' for consumer 'project_number:668384902392'.",
+    code: 429,
+    status: 'RESOURCE_EXHAUSTED',
+    errors: [ [Object] ],
+    details: [ [Object], [Object] ]
+  }
+}
+Error in poll_response action: GaxiosError: Quota exceeded for quota metric 'Read requests' and limit 'Read requests per minute per user' of service 'sheets.googleapis.com' for consumer 'project_number:668384902392'.
+    at Gaxios._request (/opt/render/project/src/node_modules/gaxios/build/cjs/src/gaxios.js:154:23)
+    at process.processTicksAndRejections (node:internal/process/task_queues:105:5)
+    at async JWT.requestAsync (/opt/render/project/src/node_modules/google-auth-library/build/src/auth/oauth2client.js:463:20)
+    at async createAPIRequestAsync (/opt/render/project/src/node_modules/googleapis-common/build/src/apirequest.js:308:25)
+    at async getQuestionTextByIndex (/opt/render/project/src/sheets.js:128:17)
+    at async /opt/render/project/src/app.js:356:26
+    at async Array.<anonymous> (/opt/render/project/src/node_modules/@slack/bolt/dist/middleware/builtin.js:175:9)
+    at async Array.onlyActions (/opt/render/project/src/node_modules/@slack/bolt/dist/middleware/builtin.js:34:9)
+    at async Promise.allSettled (index 6)
+    at async /opt/render/project/src/node_modules/@slack/bolt/dist/App.js:678:48 {
+  config: {
+    url: URL {
+      href: 'https://sheets.googleapis.com/v4/spreadsheets/1fP-yFjBdBDqXVAp8AVHI9rdo-dnwJA-mXRmApkUa6rE/values/Survey-1%218%3A8',
+      origin: 'https://sheets.googleapis.com',
+      protocol: 'https:',
+      username: '',
+      password: '',
+      host: 'sheets.googleapis.com',
+      hostname: 'sheets.googleapis.com',
+      port: '',
+      pathname: '/v4/spreadsheets/1fP-yFjBdBDqXVAp8AVHI9rdo-dnwJA-mXRmApkUa6rE/values/Survey-1%218%3A8',
+      search: '',
+      searchParams: URLSearchParams {},
+      hash: ''
+    },
+    method: 'GET',
+    apiVersion: '',
+    userAgentDirectives: [ [Object] ],
+    headers: Headers {
+      'accept-encoding': 'gzip',
+      authorization: '<<REDACTED> - See `errorRedactor` option in `gaxios` for configuration>.',
+      'user-agent': 'google-api-nodejs-client/8.0.0 (gzip)',
+      'x-goog-api-client': 'gdcl/8.0.0 gl-node/22.16.0'
+    },
+    validateStatus: [Function (anonymous)],
+    retry: true,
+    responseType: 'unknown',
+    errorRedactor: [Function: defaultErrorRedactor],
+    retryConfig: {
+      currentRetryAttempt: 3,
+      retry: 3,
+      httpMethodsToRetry: [Array],
+      noResponseRetries: 2,
+      retryDelayMultiplier: 2,
+      timeOfFirstRequest: 1754301390814,
+      totalTimeout: 9007199254740991,
+      maxRetryDelay: 9007199254740991,
+      statusCodesToRetry: [Array]
+    }
+  },
+  response: Response {
+    size: 0,
+    data: { error: [Object] },
+    config: {
+      url: URL {},
+      method: 'GET',
+      apiVersion: '',
+      userAgentDirectives: [Array],
+      headers: Headers {
+        'accept-encoding': 'gzip',
+        authorization: '<<REDACTED> - See `errorRedactor` option in `gaxios` for configuration>.',
+        'user-agent': 'google-api-nodejs-client/8.0.0 (gzip)',
+        'x-goog-api-client': 'gdcl/8.0.0 gl-node/22.16.0'
+      },
+      validateStatus: [Function (anonymous)],
+      retry: true,
+      responseType: 'unknown',
+      errorRedactor: [Function: defaultErrorRedactor],
+      retryConfig: [Object]
+    },
+    [Symbol(Body internals)]: {
+      body: [Gunzip],
+      stream: [Gunzip],
+      boundary: null,
+      disturbed: true,
+      error: null
+    },
+    [Symbol(Response internals)]: {
+      type: 'default',
+      url: 'https://sheets.googleapis.com/v4/spreadsheets/1fP-yFjBdBDqXVAp8AVHI9rdo-dnwJA-mXRmApkUa6rE/values/Survey-1%218%3A8',
+      status: 429,
+      statusText: 'Too Many Requests',
+      headers: [Object],
+      counter: 0,
+      highWaterMark: 16384
+    }
+  },
+  code: 429,
+  status: 429,
+  error: undefined,
+  [Symbol(gaxios-gaxios-error)]: '7.1.1',
+  [cause]: {
+    message: "Quota exceeded for quota metric 'Read requests' and limit 'Read requests per minute per user' of service 'sheets.googleapis.com' for consumer 'project_number:668384902392'.",
+    code: 429,
+    status: 'RESOURCE_EXHAUSTED',
+    errors: [ [Object] ],
+    details: [ [Object], [Object] ]
+  }
+}
+Error in poll_response action: GaxiosError: Quota exceeded for quota metric 'Read requests' and limit 'Read requests per minute per user' of service 'sheets.googleapis.com' for consumer 'project_number:668384902392'.
+    at Gaxios._request (/opt/render/project/src/node_modules/gaxios/build/cjs/src/gaxios.js:154:23)
+    at process.processTicksAndRejections (node:internal/process/task_queues:105:5)
+    at async JWT.requestAsync (/opt/render/project/src/node_modules/google-auth-library/build/src/auth/oauth2client.js:463:20)
+    at async createAPIRequestAsync (/opt/render/project/src/node_modules/googleapis-common/build/src/apirequest.js:308:25)
+    at async getQuestionTextByIndex (/opt/render/project/src/sheets.js:128:17)
+    at async /opt/render/project/src/app.js:356:26
+    at async Array.<anonymous> (/opt/render/project/src/node_modules/@slack/bolt/dist/middleware/builtin.js:175:9)
+    at async Array.onlyActions (/opt/render/project/src/node_modules/@slack/bolt/dist/middleware/builtin.js:34:9)
+    at async Promise.allSettled (index 6)
+    at async /opt/render/project/src/node_modules/@slack/bolt/dist/App.js:678:48 {
+  config: {
+    url: URL {
+      href: 'https://sheets.googleapis.com/v4/spreadsheets/1fP-yFjBdBDqXVAp8AVHI9rdo-dnwJA-mXRmApkUa6rE/values/Survey-1%218%3A8',
+      origin: 'https://sheets.googleapis.com',
+      protocol: 'https:',
+      username: '',
+      password: '',
+      host: 'sheets.googleapis.com',
+      hostname: 'sheets.googleapis.com',
+      port: '',
+      pathname: '/v4/spreadsheets/1fP-yFjBdBDqXVAp8AVHI9rdo-dnwJA-mXRmApkUa6rE/values/Survey-1%218%3A8',
+      search: '',
+      searchParams: URLSearchParams {},
+      hash: ''
+    },
+    method: 'GET',
+    apiVersion: '',
+    userAgentDirectives: [ [Object] ],
+    headers: Headers {
+      'accept-encoding': 'gzip',
+      authorization: '<<REDACTED> - See `errorRedactor` option in `gaxios` for configuration>.',
+      'user-agent': 'google-api-nodejs-client/8.0.0 (gzip)',
+      'x-goog-api-client': 'gdcl/8.0.0 gl-node/22.16.0'
+    },
+    validateStatus: [Function (anonymous)],
+    retry: true,
+    responseType: 'unknown',
+    errorRedactor: [Function: defaultErrorRedactor],
+    retryConfig: {
+      currentRetryAttempt: 3,
+      retry: 3,
+      httpMethodsToRetry: [Array],
+      noResponseRetries: 2,
+      retryDelayMultiplier: 2,
+      timeOfFirstRequest: 1754301391584,
+      totalTimeout: 9007199254740991,
+      maxRetryDelay: 9007199254740991,
+      statusCodesToRetry: [Array]
+    }
+  },
+  response: Response {
+    size: 0,
+    data: { error: [Object] },
+    config: {
+      url: URL {},
+      method: 'GET',
+      apiVersion: '',
+      userAgentDirectives: [Array],
+      headers: Headers {
+        'accept-encoding': 'gzip',
+        authorization: '<<REDACTED> - See `errorRedactor` option in `gaxios` for configuration>.',
+        'user-agent': 'google-api-nodejs-client/8.0.0 (gzip)',
+        'x-goog-api-client': 'gdcl/8.0.0 gl-node/22.16.0'
+      },
+      validateStatus: [Function (anonymous)],
+      retry: true,
+      responseType: 'unknown',
+      errorRedactor: [Function: defaultErrorRedactor],
+      retryConfig: [Object]
+    },
+    [Symbol(Body internals)]: {
+      body: [Gunzip],
+      stream: [Gunzip],
+      boundary: null,
+      disturbed: true,
+      error: null
+    },
+    [Symbol(Response internals)]: {
+      type: 'default',
+      url: 'https://sheets.googleapis.com/v4/spreadsheets/1fP-yFjBdBDqXVAp8AVHI9rdo-dnwJA-mXRmApkUa6rE/values/Survey-1%218%3A8',
+      status: 429,
+      statusText: 'Too Many Requests',
+      headers: [Object],
+      counter: 0,
+      highWaterMark: 16384
+    }
+  },
+  code: 429,
+  status: 429,
+  error: undefined,
+  [Symbol(gaxios-gaxios-error)]: '7.1.1',
+  [cause]: {
+    message: "Quota exceeded for quota metric 'Read requests' and limit 'Read requests per minute per user' of service 'sheets.googleapis.com' for consumer 'project_number:668384902392'.",
+    code: 429,
+    status: 'RESOURCE_EXHAUSTED',
+    errors: [ [Object] ],
+    details: [ [Object], [Object] ]
+  }
+}
+Error in poll_response action: GaxiosError: Quota exceeded for quota metric 'Read requests' and limit 'Read requests per minute per user' of service 'sheets.googleapis.com' for consumer 'project_number:668384902392'.
+    at Gaxios._request (/opt/render/project/src/node_modules/gaxios/build/cjs/src/gaxios.js:154:23)
+    at process.processTicksAndRejections (node:internal/process/task_queues:105:5)
+    at async JWT.requestAsync (/opt/render/project/src/node_modules/google-auth-library/build/src/auth/oauth2client.js:463:20)
+    at async createAPIRequestAsync (/opt/render/project/src/node_modules/googleapis-common/build/src/apirequest.js:308:25)
+    at async getQuestionTextByIndex (/opt/render/project/src/sheets.js:128:17)
+    at async /opt/render/project/src/app.js:356:26
+    at async Array.<anonymous> (/opt/render/project/src/node_modules/@slack/bolt/dist/middleware/builtin.js:175:9)
+    at async Array.onlyActions (/opt/render/project/src/node_modules/@slack/bolt/dist/middleware/builtin.js:34:9)
+    at async Promise.allSettled (index 6)
+    at async /opt/render/project/src/node_modules/@slack/bolt/dist/App.js:678:48 {
+  config: {
+    url: URL {
+      href: 'https://sheets.googleapis.com/v4/spreadsheets/1fP-yFjBdBDqXVAp8AVHI9rdo-dnwJA-mXRmApkUa6rE/values/Survey-1%218%3A8',
+      origin: 'https://sheets.googleapis.com',
+      protocol: 'https:',
+      username: '',
+      password: '',
+      host: 'sheets.googleapis.com',
+      hostname: 'sheets.googleapis.com',
+      port: '',
+      pathname: '/v4/spreadsheets/1fP-yFjBdBDqXVAp8AVHI9rdo-dnwJA-mXRmApkUa6rE/values/Survey-1%218%3A8',
+      search: '',
+      searchParams: URLSearchParams {},
+      hash: ''
+    },
+    method: 'GET',
+    apiVersion: '',
+    userAgentDirectives: [ [Object] ],
+    headers: Headers {
+      'accept-encoding': 'gzip',
+      authorization: '<<REDACTED> - See `errorRedactor` option in `gaxios` for configuration>.',
+      'user-agent': 'google-api-nodejs-client/8.0.0 (gzip)',
+      'x-goog-api-client': 'gdcl/8.0.0 gl-node/22.16.0'
+    },
+    validateStatus: [Function (anonymous)],
+    retry: true,
+    responseType: 'unknown',
+    errorRedactor: [Function: defaultErrorRedactor],
+    retryConfig: {
+      currentRetryAttempt: 3,
+      retry: 3,
+      httpMethodsToRetry: [Array],
+      noResponseRetries: 2,
+      retryDelayMultiplier: 2,
+      timeOfFirstRequest: 1754301391616,
+      totalTimeout: 9007199254740991,
+      maxRetryDelay: 9007199254740991,
+      statusCodesToRetry: [Array]
+    }
+  },
+  response: Response {
+    size: 0,
+    data: { error: [Object] },
+    config: {
+      url: URL {},
+      method: 'GET',
+      apiVersion: '',
+      userAgentDirectives: [Array],
+      headers: Headers {
+        'accept-encoding': 'gzip',
+        authorization: '<<REDACTED> - See `errorRedactor` option in `gaxios` for configuration>.',
+        'user-agent': 'google-api-nodejs-client/8.0.0 (gzip)',
+        'x-goog-api-client': 'gdcl/8.0.0 gl-node/22.16.0'
+      },
+      validateStatus: [Function (anonymous)],
+      retry: true,
+      responseType: 'unknown',
+      errorRedactor: [Function: defaultErrorRedactor],
+      retryConfig: [Object]
+    },
+    [Symbol(Body internals)]: {
+      body: [Gunzip],
+      stream: [Gunzip],
+      boundary: null,
+      disturbed: true,
+      error: null
+    },
+    [Symbol(Response internals)]: {
+      type: 'default',
+      url: 'https://sheets.googleapis.com/v4/spreadsheets/1fP-yFjBdBDqXVAp8AVHI9rdo-dnwJA-mXRmApkUa6rE/values/Survey-1%218%3A8',
+      status: 429,
+      statusText: 'Too Many Requests',
+      headers: [Object],
+      counter: 0,
+      highWaterMark: 16384
+    }
+  },
+  code: 429,
+  status: 429,
+  error: undefined,
+  [Symbol(gaxios-gaxios-error)]: '7.1.1',
+  [cause]: {
+    message: "Quota exceeded for quota metric 'Read requests' and limit 'Read requests per minute per user' of service 'sheets.googleapis.com' for consumer 'project_number:668384902392'.",
+    code: 429,
+    status: 'RESOURCE_EXHAUSTED',
+    errors: [ [Object] ],
+    details: [ [Object], [Object] ]
+  }
+}
+Error in confirm_answer_submission: GaxiosError: Quota exceeded for quota metric 'Read requests' and limit 'Read requests per minute per user' of service 'sheets.googleapis.com' for consumer 'project_number:668384902392'.
+    at Gaxios._request (/opt/render/project/src/node_modules/gaxios/build/cjs/src/gaxios.js:154:23)
+    at process.processTicksAndRejections (node:internal/process/task_queues:105:5)
+    at async JWT.requestAsync (/opt/render/project/src/node_modules/google-auth-library/build/src/auth/oauth2client.js:463:20)
+    at async createAPIRequestAsync (/opt/render/project/src/node_modules/googleapis-common/build/src/apirequest.js:308:25)
+    at async getQuestionTextByIndex (/opt/render/project/src/sheets.js:128:17)
+    at async /opt/render/project/src/app.js:553:26
+    at async Array.<anonymous> (/opt/render/project/src/node_modules/@slack/bolt/dist/middleware/builtin.js:175:9)
+    at async Array.onlyViewActions (/opt/render/project/src/node_modules/@slack/bolt/dist/middleware/builtin.js:81:9)
+    at async Promise.allSettled (index 10)
+    at async /opt/render/project/src/node_modules/@slack/bolt/dist/App.js:678:48 {
+  config: {
+    url: URL {
+      href: 'https://sheets.googleapis.com/v4/spreadsheets/1fP-yFjBdBDqXVAp8AVHI9rdo-dnwJA-mXRmApkUa6rE/values/Survey-1%218%3A8',
+      origin: 'https://sheets.googleapis.com',
+      protocol: 'https:',
+      username: '',
+      password: '',
+      host: 'sheets.googleapis.com',
+      hostname: 'sheets.googleapis.com',
+      port: '',
+      pathname: '/v4/spreadsheets/1fP-yFjBdBDqXVAp8AVHI9rdo-dnwJA-mXRmApkUa6rE/values/Survey-1%218%3A8',
+      search: '',
+      searchParams: URLSearchParams {},
+      hash: ''
+    },
+    method: 'GET',
+    apiVersion: '',
+    userAgentDirectives: [ [Object] ],
+    headers: Headers {
+      'accept-encoding': 'gzip',
+      authorization: '<<REDACTED> - See `errorRedactor` option in `gaxios` for configuration>.',
+      'user-agent': 'google-api-nodejs-client/8.0.0 (gzip)',
+      'x-goog-api-client': 'gdcl/8.0.0 gl-node/22.16.0'
+    },
+    validateStatus: [Function (anonymous)],
+    retry: true,
+    responseType: 'unknown',
+    errorRedactor: [Function: defaultErrorRedactor],
+    retryConfig: {
+      currentRetryAttempt: 3,
+      retry: 3,
+      httpMethodsToRetry: [Array],
+      noResponseRetries: 2,
+      retryDelayMultiplier: 2,
+      timeOfFirstRequest: 1754301391667,
+      totalTimeout: 9007199254740991,
+      maxRetryDelay: 9007199254740991,
+      statusCodesToRetry: [Array]
+    }
+  },
+  response: Response {
+    size: 0,
+    data: { error: [Object] },
+    config: {
+      url: URL {},
+      method: 'GET',
+      apiVersion: '',
+      userAgentDirectives: [Array],
+      headers: Headers {
+        'accept-encoding': 'gzip',
+        authorization: '<<REDACTED> - See `errorRedactor` option in `gaxios` for configuration>.',
+        'user-agent': 'google-api-nodejs-client/8.0.0 (gzip)',
+        'x-goog-api-client': 'gdcl/8.0.0 gl-node/22.16.0'
+      },
+      validateStatus: [Function (anonymous)],
+      retry: true,
+      responseType: 'unknown',
+      errorRedactor: [Function: defaultErrorRedactor],
+      retryConfig: [Object]
+    },
+    [Symbol(Body internals)]: {
+      body: [Gunzip],
+      stream: [Gunzip],
+      boundary: null,
+      disturbed: true,
+      error: null
+    },
+    [Symbol(Response internals)]: {
+      type: 'default',
+      url: 'https://sheets.googleapis.com/v4/spreadsheets/1fP-yFjBdBDqXVAp8AVHI9rdo-dnwJA-mXRmApkUa6rE/values/Survey-1%218%3A8',
+      status: 429,
+      statusText: 'Too Many Requests',
+      headers: [Object],
+      counter: 0,
+      highWaterMark: 16384
+    }
+  },
+  code: 429,
+  status: 429,
+  error: undefined,
+  [Symbol(gaxios-gaxios-error)]: '7.1.1',
+  [cause]: {
+    message: "Quota exceeded for quota metric 'Read requests' and limit 'Read requests per minute per user' of service 'sheets.googleapis.com' for consumer 'project_number:668384902392'.",
+    code: 429,
+    status: 'RESOURCE_EXHAUSTED',
+    errors: [ [Object] ],
+    details: [ [Object], [Object] ]
+  }
+}
+Error in confirm_answer_submission: GaxiosError: Quota exceeded for quota metric 'Read requests' and limit 'Read requests per minute per user' of service 'sheets.googleapis.com' for consumer 'project_number:668384902392'.
+    at Gaxios._request (/opt/render/project/src/node_modules/gaxios/build/cjs/src/gaxios.js:154:23)
+    at process.processTicksAndRejections (node:internal/process/task_queues:105:5)
+    at async JWT.requestAsync (/opt/render/project/src/node_modules/google-auth-library/build/src/auth/oauth2client.js:463:20)
+    at async createAPIRequestAsync (/opt/render/project/src/node_modules/googleapis-common/build/src/apirequest.js:308:25)
+    at async getQuestionTextByIndex (/opt/render/project/src/sheets.js:128:17)
+    at async /opt/render/project/src/app.js:553:26
+    at async Array.<anonymous> (/opt/render/project/src/node_modules/@slack/bolt/dist/middleware/builtin.js:175:9)
+    at async Array.onlyViewActions (/opt/render/project/src/node_modules/@slack/bolt/dist/middleware/builtin.js:81:9)
+    at async Promise.allSettled (index 10)
+    at async /opt/render/project/src/node_modules/@slack/bolt/dist/App.js:678:48 {
+  config: {
+    url: URL {
+      href: 'https://sheets.googleapis.com/v4/spreadsheets/1fP-yFjBdBDqXVAp8AVHI9rdo-dnwJA-mXRmApkUa6rE/values/Survey-1%218%3A8',
+      origin: 'https://sheets.googleapis.com',
+      protocol: 'https:',
+      username: '',
+      password: '',
+      host: 'sheets.googleapis.com',
+      hostname: 'sheets.googleapis.com',
+      port: '',
+      pathname: '/v4/spreadsheets/1fP-yFjBdBDqXVAp8AVHI9rdo-dnwJA-mXRmApkUa6rE/values/Survey-1%218%3A8',
+      search: '',
+      searchParams: URLSearchParams {},
+      hash: ''
+    },
+    method: 'GET',
+    apiVersion: '',
+    userAgentDirectives: [ [Object] ],
+    headers: Headers {
+      'accept-encoding': 'gzip',
+      authorization: '<<REDACTED> - See `errorRedactor` option in `gaxios` for configuration>.',
+      'user-agent': 'google-api-nodejs-client/8.0.0 (gzip)',
+      'x-goog-api-client': 'gdcl/8.0.0 gl-node/22.16.0'
+    },
+    validateStatus: [Function (anonymous)],
+    retry: true,
+    responseType: 'unknown',
+    errorRedactor: [Function: defaultErrorRedactor],
+    retryConfig: {
+      currentRetryAttempt: 3,
+      retry: 3,
+      httpMethodsToRetry: [Array],
+      noResponseRetries: 2,
+      retryDelayMultiplier: 2,
+      timeOfFirstRequest: 1754301392562,
+      totalTimeout: 9007199254740991,
+      maxRetryDelay: 9007199254740991,
+      statusCodesToRetry: [Array]
+    }
+  },
+  response: Response {
+    size: 0,
+    data: { error: [Object] },
+    config: {
+      url: URL {},
+      method: 'GET',
+      apiVersion: '',
+      userAgentDirectives: [Array],
+      headers: Headers {
+        'accept-encoding': 'gzip',
+        authorization: '<<REDACTED> - See `errorRedactor` option in `gaxios` for configuration>.',
+        'user-agent': 'google-api-nodejs-client/8.0.0 (gzip)',
+        'x-goog-api-client': 'gdcl/8.0.0 gl-node/22.16.0'
+      },
+      validateStatus: [Function (anonymous)],
+      retry: true,
+      responseType: 'unknown',
+      errorRedactor: [Function: defaultErrorRedactor],
+      retryConfig: [Object]
+    },
+    [Symbol(Body internals)]: {
+      body: [Gunzip],
+      stream: [Gunzip],
+      boundary: null,
+      disturbed: true,
+      error: null
+    },
+    [Symbol(Response internals)]: {
+      type: 'default',
+      url: 'https://sheets.googleapis.com/v4/spreadsheets/1fP-yFjBdBDqXVAp8AVHI9rdo-dnwJA-mXRmApkUa6rE/values/Survey-1%218%3A8',
+      status: 429,
+      statusText: 'Too Many Requests',
+      headers: [Object],
+      counter: 0,
+      highWaterMark: 16384
+    }
+  },
+  code: 429,
+  status: 429,
+  error: undefined,
+  [Symbol(gaxios-gaxios-error)]: '7.1.1',
+  [cause]: {
+    message: "Quota exceeded for quota metric 'Read requests' and limit 'Read requests per minute per user' of service 'sheets.googleapis.com' for consumer 'project_number:668384902392'.",
+    code: 429,
+    status: 'RESOURCE_EXHAUSTED',
+    errors: [ [Object] ],
+    details: [ [Object], [Object] ]
+  }
+}
+Error in poll_response action: GaxiosError: Quota exceeded for quota metric 'Read requests' and limit 'Read requests per minute per user' of service 'sheets.googleapis.com' for consumer 'project_number:668384902392'.
+    at Gaxios._request (/opt/render/project/src/node_modules/gaxios/build/cjs/src/gaxios.js:154:23)
+    at process.processTicksAndRejections (node:internal/process/task_queues:105:5)
+    at async JWT.requestAsync (/opt/render/project/src/node_modules/google-auth-library/build/src/auth/oauth2client.js:463:20)
+    at async createAPIRequestAsync (/opt/render/project/src/node_modules/googleapis-common/build/src/apirequest.js:308:25)
+    at async getQuestionTextByIndex (/opt/render/project/src/sheets.js:128:17)
+    at async /opt/render/project/src/app.js:356:26
+    at async Array.<anonymous> (/opt/render/project/src/node_modules/@slack/bolt/dist/middleware/builtin.js:175:9)
+    at async Array.onlyActions (/opt/render/project/src/node_modules/@slack/bolt/dist/middleware/builtin.js:34:9)
+    at async Promise.allSettled (index 6)
+    at async /opt/render/project/src/node_modules/@slack/bolt/dist/App.js:678:48 {
+  config: {
+    url: URL {
+      href: 'https://sheets.googleapis.com/v4/spreadsheets/1fP-yFjBdBDqXVAp8AVHI9rdo-dnwJA-mXRmApkUa6rE/values/Survey-1%218%3A8',
+      origin: 'https://sheets.googleapis.com',
+      protocol: 'https:',
+      username: '',
+      password: '',
+      host: 'sheets.googleapis.com',
+      hostname: 'sheets.googleapis.com',
+      port: '',
+      pathname: '/v4/spreadsheets/1fP-yFjBdBDqXVAp8AVHI9rdo-dnwJA-mXRmApkUa6rE/values/Survey-1%218%3A8',
+      search: '',
+      searchParams: URLSearchParams {},
+      hash: ''
+    },
+    method: 'GET',
+    apiVersion: '',
+    userAgentDirectives: [ [Object] ],
+    headers: Headers {
+      'accept-encoding': 'gzip',
+      authorization: '<<REDACTED> - See `errorRedactor` option in `gaxios` for configuration>.',
+      'user-agent': 'google-api-nodejs-client/8.0.0 (gzip)',
+      'x-goog-api-client': 'gdcl/8.0.0 gl-node/22.16.0'
+    },
+    validateStatus: [Function (anonymous)],
+    retry: true,
+    responseType: 'unknown',
+    errorRedactor: [Function: defaultErrorRedactor],
+    retryConfig: {
+      currentRetryAttempt: 3,
+      retry: 3,
+      httpMethodsToRetry: [Array],
+      noResponseRetries: 2,
+      retryDelayMultiplier: 2,
+      timeOfFirstRequest: 1754301392772,
+      totalTimeout: 9007199254740991,
+      maxRetryDelay: 9007199254740991,
+      statusCodesToRetry: [Array]
+    }
+  },
+  response: Response {
+    size: 0,
+    data: { error: [Object] },
+    config: {
+      url: URL {},
+      method: 'GET',
+      apiVersion: '',
+      userAgentDirectives: [Array],
+      headers: Headers {
+        'accept-encoding': 'gzip',
+        authorization: '<<REDACTED> - See `errorRedactor` option in `gaxios` for configuration>.',
+        'user-agent': 'google-api-nodejs-client/8.0.0 (gzip)',
+        'x-goog-api-client': 'gdcl/8.0.0 gl-node/22.16.0'
+      },
+      validateStatus: [Function (anonymous)],
+      retry: true,
+      responseType: 'unknown',
+      errorRedactor: [Function: defaultErrorRedactor],
+      retryConfig: [Object]
+    },
+    [Symbol(Body internals)]: {
+      body: [Gunzip],
+      stream: [Gunzip],
+      boundary: null,
+      disturbed: true,
+      error: null
+    },
+    [Symbol(Response internals)]: {
+      type: 'default',
+      url: 'https://sheets.googleapis.com/v4/spreadsheets/1fP-yFjBdBDqXVAp8AVHI9rdo-dnwJA-mXRmApkUa6rE/values/Survey-1%218%3A8',
+      status: 429,
+      statusText: 'Too Many Requests',
+      headers: [Object],
+      counter: 0,
+      highWaterMark: 16384
+    }
+  },
+  code: 429,
+  status: 429,
+  error: undefined,
+  [Symbol(gaxios-gaxios-error)]: '7.1.1',
+  [cause]: {
+    message: "Quota exceeded for quota metric 'Read requests' and limit 'Read requests per minute per user' of service 'sheets.googleapis.com' for consumer 'project_number:668384902392'.",
+    code: 429,
+    status: 'RESOURCE_EXHAUSTED',
+    errors: [ [Object] ],
+    details: [ [Object], [Object] ]
+  }
+}
+Error in poll_response action: GaxiosError: Quota exceeded for quota metric 'Read requests' and limit 'Read requests per minute per user' of service 'sheets.googleapis.com' for consumer 'project_number:668384902392'.
+    at Gaxios._request (/opt/render/project/src/node_modules/gaxios/build/cjs/src/gaxios.js:154:23)
+    at process.processTicksAndRejections (node:internal/process/task_queues:105:5)
+    at async JWT.requestAsync (/opt/render/project/src/node_modules/google-auth-library/build/src/auth/oauth2client.js:463:20)
+    at async createAPIRequestAsync (/opt/render/project/src/node_modules/googleapis-common/build/src/apirequest.js:308:25)
+    at async getQuestionTextByIndex (/opt/render/project/src/sheets.js:128:17)
+    at async /opt/render/project/src/app.js:356:26
+    at async Array.<anonymous> (/opt/render/project/src/node_modules/@slack/bolt/dist/middleware/builtin.js:175:9)
+    at async Array.onlyActions (/opt/render/project/src/node_modules/@slack/bolt/dist/middleware/builtin.js:34:9)
+    at async Promise.allSettled (index 6)
+    at async /opt/render/project/src/node_modules/@slack/bolt/dist/App.js:678:48 {
+  config: {
+    url: URL {
+      href: 'https://sheets.googleapis.com/v4/spreadsheets/1fP-yFjBdBDqXVAp8AVHI9rdo-dnwJA-mXRmApkUa6rE/values/Survey-1%218%3A8',
+      origin: 'https://sheets.googleapis.com',
+      protocol: 'https:',
+      username: '',
+      password: '',
+      host: 'sheets.googleapis.com',
+      hostname: 'sheets.googleapis.com',
+      port: '',
+      pathname: '/v4/spreadsheets/1fP-yFjBdBDqXVAp8AVHI9rdo-dnwJA-mXRmApkUa6rE/values/Survey-1%218%3A8',
+      search: '',
+      searchParams: URLSearchParams {},
+      hash: ''
+    },
+    method: 'GET',
+    apiVersion: '',
+    userAgentDirectives: [ [Object] ],
+    headers: Headers {
+      'accept-encoding': 'gzip',
+      authorization: '<<REDACTED> - See `errorRedactor` option in `gaxios` for configuration>.',
+      'user-agent': 'google-api-nodejs-client/8.0.0 (gzip)',
+      'x-goog-api-client': 'gdcl/8.0.0 gl-node/22.16.0'
+    },
+    validateStatus: [Function (anonymous)],
+    retry: true,
+    responseType: 'unknown',
+    errorRedactor: [Function: defaultErrorRedactor],
+    retryConfig: {
+      currentRetryAttempt: 3,
+      retry: 3,
+      httpMethodsToRetry: [Array],
+      noResponseRetries: 2,
+      retryDelayMultiplier: 2,
+      timeOfFirstRequest: 1754301393666,
+      totalTimeout: 9007199254740991,
+      maxRetryDelay: 9007199254740991,
+      statusCodesToRetry: [Array]
+    }
+  },
+  response: Response {
+    size: 0,
+    data: { error: [Object] },
+    config: {
+      url: URL {},
+      method: 'GET',
+      apiVersion: '',
+      userAgentDirectives: [Array],
+      headers: Headers {
+        'accept-encoding': 'gzip',
+        authorization: '<<REDACTED> - See `errorRedactor` option in `gaxios` for configuration>.',
+        'user-agent': 'google-api-nodejs-client/8.0.0 (gzip)',
+        'x-goog-api-client': 'gdcl/8.0.0 gl-node/22.16.0'
+      },
+      validateStatus: [Function (anonymous)],
+      retry: true,
+      responseType: 'unknown',
+      errorRedactor: [Function: defaultErrorRedactor],
+      retryConfig: [Object]
+    },
+    [Symbol(Body internals)]: {
+      body: [Gunzip],
+      stream: [Gunzip],
+      boundary: null,
+      disturbed: true,
+      error: null
+    },
+    [Symbol(Response internals)]: {
+      type: 'default',
+      url: 'https://sheets.googleapis.com/v4/spreadsheets/1fP-yFjBdBDqXVAp8AVHI9rdo-dnwJA-mXRmApkUa6rE/values/Survey-1%218%3A8',
+      status: 429,
+      statusText: 'Too Many Requests',
+      headers: [Object],
+      counter: 0,
+      highWaterMark: 16384
+    }
+  },
+  code: 429,
+  status: 429,
+  error: undefined,
+  [Symbol(gaxios-gaxios-error)]: '7.1.1',
+  [cause]: {
+    message: "Quota exceeded for quota metric 'Read requests' and limit 'Read requests per minute per user' of service 'sheets.googleapis.com' for consumer 'project_number:668384902392'.",
+    code: 429,
+    status: 'RESOURCE_EXHAUSTED',
+    errors: [ [Object] ],
+    details: [ [Object], [Object] ]
+  }
+}
+Error in poll_response action: GaxiosError: Quota exceeded for quota metric 'Read requests' and limit 'Read requests per minute per user' of service 'sheets.googleapis.com' for consumer 'project_number:668384902392'.
+    at Gaxios._request (/opt/render/project/src/node_modules/gaxios/build/cjs/src/gaxios.js:154:23)
+    at process.processTicksAndRejections (node:internal/process/task_queues:105:5)
+    at async JWT.requestAsync (/opt/render/project/src/node_modules/google-auth-library/build/src/auth/oauth2client.js:463:20)
+    at async createAPIRequestAsync (/opt/render/project/src/node_modules/googleapis-common/build/src/apirequest.js:308:25)
+    at async getQuestionTextByIndex (/opt/render/project/src/sheets.js:128:17)
+    at async /opt/render/project/src/app.js:356:26
+    at async Array.<anonymous> (/opt/render/project/src/node_modules/@slack/bolt/dist/middleware/builtin.js:175:9)
+    at async Array.onlyActions (/opt/render/project/src/node_modules/@slack/bolt/dist/middleware/builtin.js:34:9)
+    at async Promise.allSettled (index 6)
+    at async /opt/render/project/src/node_modules/@slack/bolt/dist/App.js:678:48 {
+  config: {
+    url: URL {
+      href: 'https://sheets.googleapis.com/v4/spreadsheets/1fP-yFjBdBDqXVAp8AVHI9rdo-dnwJA-mXRmApkUa6rE/values/Survey-1%218%3A8',
+      origin: 'https://sheets.googleapis.com',
+      protocol: 'https:',
+      username: '',
+      password: '',
+      host: 'sheets.googleapis.com',
+      hostname: 'sheets.googleapis.com',
+      port: '',
+      pathname: '/v4/spreadsheets/1fP-yFjBdBDqXVAp8AVHI9rdo-dnwJA-mXRmApkUa6rE/values/Survey-1%218%3A8',
+      search: '',
+      searchParams: URLSearchParams {},
+      hash: ''
+    },
+    method: 'GET',
+    apiVersion: '',
+    userAgentDirectives: [ [Object] ],
+    headers: Headers {
+      'accept-encoding': 'gzip',
+      authorization: '<<REDACTED> - See `errorRedactor` option in `gaxios` for configuration>.',
+      'user-agent': 'google-api-nodejs-client/8.0.0 (gzip)',
+      'x-goog-api-client': 'gdcl/8.0.0 gl-node/22.16.0'
+    },
+    validateStatus: [Function (anonymous)],
+    retry: true,
+    responseType: 'unknown',
+    errorRedactor: [Function: defaultErrorRedactor],
+    retryConfig: {
+      currentRetryAttempt: 3,
+      retry: 3,
+      httpMethodsToRetry: [Array],
+      noResponseRetries: 2,
+      retryDelayMultiplier: 2,
+      timeOfFirstRequest: 1754301394685,
+      totalTimeout: 9007199254740991,
+      maxRetryDelay: 9007199254740991,
+      statusCodesToRetry: [Array]
+    }
+  },
+  response: Response {
+    size: 0,
+    data: { error: [Object] },
+    config: {
+      url: URL {},
+      method: 'GET',
+      apiVersion: '',
+      userAgentDirectives: [Array],
+      headers: Headers {
+        'accept-encoding': 'gzip',
+        authorization: '<<REDACTED> - See `errorRedactor` option in `gaxios` for configuration>.',
+        'user-agent': 'google-api-nodejs-client/8.0.0 (gzip)',
+        'x-goog-api-client': 'gdcl/8.0.0 gl-node/22.16.0'
+      },
+      validateStatus: [Function (anonymous)],
+      retry: true,
+      responseType: 'unknown',
+      errorRedactor: [Function: defaultErrorRedactor],
+      retryConfig: [Object]
+    },
+    [Symbol(Body internals)]: {
+      body: [Gunzip],
+      stream: [Gunzip],
+      boundary: null,
+      disturbed: true,
+      error: null
+    },
+    [Symbol(Response internals)]: {
+      type: 'default',
+      url: 'https://sheets.googleapis.com/v4/spreadsheets/1fP-yFjBdBDqXVAp8AVHI9rdo-dnwJA-mXRmApkUa6rE/values/Survey-1%218%3A8',
+      status: 429,
+      statusText: 'Too Many Requests',
+      headers: [Object],
+      counter: 0,
+      highWaterMark: 16384
+    }
+  },
+  code: 429,
+  status: 429,
+  error: undefined,
+  [Symbol(gaxios-gaxios-error)]: '7.1.1',
+  [cause]: {
+    message: "Quota exceeded for quota metric 'Read requests' and limit 'Read requests per minute per user' of service 'sheets.googleapis.com' for consumer 'project_number:668384902392'.",
+    code: 429,
+    status: 'RESOURCE_EXHAUSTED',
+    errors: [ [Object] ],
+    details: [ [Object], [Object] ]
+  }
+}
+Error in poll_response action: GaxiosError: Quota exceeded for quota metric 'Read requests' and limit 'Read requests per minute per user' of service 'sheets.googleapis.com' for consumer 'project_number:668384902392'.
+    at Gaxios._request (/opt/render/project/src/node_modules/gaxios/build/cjs/src/gaxios.js:154:23)
+    at process.processTicksAndRejections (node:internal/process/task_queues:105:5)
+    at async JWT.requestAsync (/opt/render/project/src/node_modules/google-auth-library/build/src/auth/oauth2client.js:463:20)
+    at async createAPIRequestAsync (/opt/render/project/src/node_modules/googleapis-common/build/src/apirequest.js:308:25)
+    at async getQuestionTextByIndex (/opt/render/project/src/sheets.js:128:17)
+    at async /opt/render/project/src/app.js:356:26
+    at async Array.<anonymous> (/opt/render/project/src/node_modules/@slack/bolt/dist/middleware/builtin.js:175:9)
+    at async Array.onlyActions (/opt/render/project/src/node_modules/@slack/bolt/dist/middleware/builtin.js:34:9)
+    at async Promise.allSettled (index 6)
+    at async /opt/render/project/src/node_modules/@slack/bolt/dist/App.js:678:48 {
+  config: {
+    url: URL {
+      href: 'https://sheets.googleapis.com/v4/spreadsheets/1fP-yFjBdBDqXVAp8AVHI9rdo-dnwJA-mXRmApkUa6rE/values/Survey-1%218%3A8',
+      origin: 'https://sheets.googleapis.com',
+      protocol: 'https:',
+      username: '',
+      password: '',
+      host: 'sheets.googleapis.com',
+      hostname: 'sheets.googleapis.com',
+      port: '',
+      pathname: '/v4/spreadsheets/1fP-yFjBdBDqXVAp8AVHI9rdo-dnwJA-mXRmApkUa6rE/values/Survey-1%218%3A8',
+      search: '',
+      searchParams: URLSearchParams {},
+      hash: ''
+    },
+    method: 'GET',
+    apiVersion: '',
+    userAgentDirectives: [ [Object] ],
+    headers: Headers {
+      'accept-encoding': 'gzip',
+      authorization: '<<REDACTED> - See `errorRedactor` option in `gaxios` for configuration>.',
+      'user-agent': 'google-api-nodejs-client/8.0.0 (gzip)',
+      'x-goog-api-client': 'gdcl/8.0.0 gl-node/22.16.0'
+    },
+    validateStatus: [Function (anonymous)],
+    retry: true,
+    responseType: 'unknown',
+    errorRedactor: [Function: defaultErrorRedactor],
+    retryConfig: {
+      currentRetryAttempt: 3,
+      retry: 3,
+      httpMethodsToRetry: [Array],
+      noResponseRetries: 2,
+      retryDelayMultiplier: 2,
+      timeOfFirstRequest: 1754301396074,
+      totalTimeout: 9007199254740991,
+      maxRetryDelay: 9007199254740991,
+      statusCodesToRetry: [Array]
+    }
+  },
+  response: Response {
+    size: 0,
+    data: { error: [Object] },
+    config: {
+      url: URL {},
+      method: 'GET',
+      apiVersion: '',
+      userAgentDirectives: [Array],
+      headers: Headers {
+        'accept-encoding': 'gzip',
+        authorization: '<<REDACTED> - See `errorRedactor` option in `gaxios` for configuration>.',
+        'user-agent': 'google-api-nodejs-client/8.0.0 (gzip)',
+        'x-goog-api-client': 'gdcl/8.0.0 gl-node/22.16.0'
+      },
+      validateStatus: [Function (anonymous)],
+      retry: true,
+      responseType: 'unknown',
+      errorRedactor: [Function: defaultErrorRedactor],
+      retryConfig: [Object]
+    },
+    [Symbol(Body internals)]: {
+      body: [Gunzip],
+      stream: [Gunzip],
+      boundary: null,
+      disturbed: true,
+      error: null
+    },
+    [Symbol(Response internals)]: {
+      type: 'default',
+      url: 'https://sheets.googleapis.com/v4/spreadsheets/1fP-yFjBdBDqXVAp8AVHI9rdo-dnwJA-mXRmApkUa6rE/values/Survey-1%218%3A8',
+      status: 429,
+      statusText: 'Too Many Requests',
+      headers: [Object],
+      counter: 0,
+      highWaterMark: 16384
+    }
+  },
+  code: 429,
+  status: 429,
+  error: undefined,
+  [Symbol(gaxios-gaxios-error)]: '7.1.1',
+  [cause]: {
+    message: "Quota exceeded for quota metric 'Read requests' and limit 'Read requests per minute per user' of service 'sheets.googleapis.com' for consumer 'project_number:668384902392'.",
+    code: 429,
+    status: 'RESOURCE_EXHAUSTED',
+    errors: [ [Object] ],
+    details: [ [Object], [Object] ]
+  }
+}
+Error in poll_response action: GaxiosError: Quota exceeded for quota metric 'Read requests' and limit 'Read requests per minute per user' of service 'sheets.googleapis.com' for consumer 'project_number:668384902392'.
+    at Gaxios._request (/opt/render/project/src/node_modules/gaxios/build/cjs/src/gaxios.js:154:23)
+    at process.processTicksAndRejections (node:internal/process/task_queues:105:5)
+    at async JWT.requestAsync (/opt/render/project/src/node_modules/google-auth-library/build/src/auth/oauth2client.js:463:20)
+    at async createAPIRequestAsync (/opt/render/project/src/node_modules/googleapis-common/build/src/apirequest.js:308:25)
+    at async getQuestionTextByIndex (/opt/render/project/src/sheets.js:128:17)
+    at async /opt/render/project/src/app.js:356:26
+    at async Array.<anonymous> (/opt/render/project/src/node_modules/@slack/bolt/dist/middleware/builtin.js:175:9)
+    at async Array.onlyActions (/opt/render/project/src/node_modules/@slack/bolt/dist/middleware/builtin.js:34:9)
+    at async Promise.allSettled (index 6)
+    at async /opt/render/project/src/node_modules/@slack/bolt/dist/App.js:678:48 {
+  config: {
+    url: URL {
+      href: 'https://sheets.googleapis.com/v4/spreadsheets/1fP-yFjBdBDqXVAp8AVHI9rdo-dnwJA-mXRmApkUa6rE/values/Survey-1%218%3A8',
+      origin: 'https://sheets.googleapis.com',
+      protocol: 'https:',
+      username: '',
+      password: '',
+      host: 'sheets.googleapis.com',
+      hostname: 'sheets.googleapis.com',
+      port: '',
+      pathname: '/v4/spreadsheets/1fP-yFjBdBDqXVAp8AVHI9rdo-dnwJA-mXRmApkUa6rE/values/Survey-1%218%3A8',
+      search: '',
+      searchParams: URLSearchParams {},
+      hash: ''
+    },
+    method: 'GET',
+    apiVersion: '',
+    userAgentDirectives: [ [Object] ],
+    headers: Headers {
+      'accept-encoding': 'gzip',
+      authorization: '<<REDACTED> - See `errorRedactor` option in `gaxios` for configuration>.',
+      'user-agent': 'google-api-nodejs-client/8.0.0 (gzip)',
+      'x-goog-api-client': 'gdcl/8.0.0 gl-node/22.16.0'
+    },
+    validateStatus: [Function (anonymous)],
+    retry: true,
+    responseType: 'unknown',
+    errorRedactor: [Function: defaultErrorRedactor],
+    retryConfig: {
+      currentRetryAttempt: 3,
+      retry: 3,
+      httpMethodsToRetry: [Array],
+      noResponseRetries: 2,
+      retryDelayMultiplier: 2,
+      timeOfFirstRequest: 1754301396442,
+      totalTimeout: 9007199254740991,
+      maxRetryDelay: 9007199254740991,
+      statusCodesToRetry: [Array]
+    }
+  },
+  response: Response {
+    size: 0,
+    data: { error: [Object] },
+    config: {
+      url: URL {},
+      method: 'GET',
+      apiVersion: '',
+      userAgentDirectives: [Array],
+      headers: Headers {
+        'accept-encoding': 'gzip',
+        authorization: '<<REDACTED> - See `errorRedactor` option in `gaxios` for configuration>.',
+        'user-agent': 'google-api-nodejs-client/8.0.0 (gzip)',
+        'x-goog-api-client': 'gdcl/8.0.0 gl-node/22.16.0'
+      },
+      validateStatus: [Function (anonymous)],
+      retry: true,
+      responseType: 'unknown',
+      errorRedactor: [Function: defaultErrorRedactor],
+      retryConfig: [Object]
+    },
+    [Symbol(Body internals)]: {
+      body: [Gunzip],
+      stream: [Gunzip],
+      boundary: null,
+      disturbed: true,
+      error: null
+    },
+    [Symbol(Response internals)]: {
+      type: 'default',
+      url: 'https://sheets.googleapis.com/v4/spreadsheets/1fP-yFjBdBDqXVAp8AVHI9rdo-dnwJA-mXRmApkUa6rE/values/Survey-1%218%3A8',
+      status: 429,
+      statusText: 'Too Many Requests',
+      headers: [Object],
+      counter: 0,
+      highWaterMark: 16384
+    }
+  },
+  code: 429,
+  status: 429,
+  error: undefined,
+  [Symbol(gaxios-gaxios-error)]: '7.1.1',
+  [cause]: {
+    message: "Quota exceeded for quota metric 'Read requests' and limit 'Read requests per minute per user' of service 'sheets.googleapis.com' for consumer 'project_number:668384902392'.",
+    code: 429,
+    status: 'RESOURCE_EXHAUSTED',
+    errors: [ [Object] ],
+    details: [ [Object], [Object] ]
+  }
+}
+Error in poll_response action: GaxiosError: Quota exceeded for quota metric 'Read requests' and limit 'Read requests per minute per user' of service 'sheets.googleapis.com' for consumer 'project_number:668384902392'.
+    at Gaxios._request (/opt/render/project/src/node_modules/gaxios/build/cjs/src/gaxios.js:154:23)
+    at process.processTicksAndRejections (node:internal/process/task_queues:105:5)
+    at async JWT.requestAsync (/opt/render/project/src/node_modules/google-auth-library/build/src/auth/oauth2client.js:463:20)
+    at async createAPIRequestAsync (/opt/render/project/src/node_modules/googleapis-common/build/src/apirequest.js:308:25)
+    at async getQuestionTextByIndex (/opt/render/project/src/sheets.js:128:17)
+    at async /opt/render/project/src/app.js:356:26
+    at async Array.<anonymous> (/opt/render/project/src/node_modules/@slack/bolt/dist/middleware/builtin.js:175:9)
+    at async Array.onlyActions (/opt/render/project/src/node_modules/@slack/bolt/dist/middleware/builtin.js:34:9)
+    at async Promise.allSettled (index 6)
+    at async /opt/render/project/src/node_modules/@slack/bolt/dist/App.js:678:48 {
+  config: {
+    url: URL {
+      href: 'https://sheets.googleapis.com/v4/spreadsheets/1fP-yFjBdBDqXVAp8AVHI9rdo-dnwJA-mXRmApkUa6rE/values/Survey-1%218%3A8',
+      origin: 'https://sheets.googleapis.com',
+      protocol: 'https:',
+      username: '',
+      password: '',
+      host: 'sheets.googleapis.com',
+      hostname: 'sheets.googleapis.com',
+      port: '',
+      pathname: '/v4/spreadsheets/1fP-yFjBdBDqXVAp8AVHI9rdo-dnwJA-mXRmApkUa6rE/values/Survey-1%218%3A8',
+      search: '',
+      searchParams: URLSearchParams {},
+      hash: ''
+    },
+    method: 'GET',
+    apiVersion: '',
+    userAgentDirectives: [ [Object] ],
+    headers: Headers {
+      'accept-encoding': 'gzip',
+      authorization: '<<REDACTED> - See `errorRedactor` option in `gaxios` for configuration>.',
+      'user-agent': 'google-api-nodejs-client/8.0.0 (gzip)',
+      'x-goog-api-client': 'gdcl/8.0.0 gl-node/22.16.0'
+    },
+    validateStatus: [Function (anonymous)],
+    retry: true,
+    responseType: 'unknown',
+    errorRedactor: [Function: defaultErrorRedactor],
+    retryConfig: {
+      currentRetryAttempt: 3,
+      retry: 3,
+      httpMethodsToRetry: [Array],
+      noResponseRetries: 2,
+      retryDelayMultiplier: 2,
+      timeOfFirstRequest: 1754301398259,
+      totalTimeout: 9007199254740991,
+      maxRetryDelay: 9007199254740991,
+      statusCodesToRetry: [Array]
+    }
+  },
+  response: Response {
+    size: 0,
+    data: { error: [Object] },
+    config: {
+      url: URL {},
+      method: 'GET',
+      apiVersion: '',
+      userAgentDirectives: [Array],
+      headers: Headers {
+        'accept-encoding': 'gzip',
+        authorization: '<<REDACTED> - See `errorRedactor` option in `gaxios` for configuration>.',
+        'user-agent': 'google-api-nodejs-client/8.0.0 (gzip)',
+        'x-goog-api-client': 'gdcl/8.0.0 gl-node/22.16.0'
+      },
+      validateStatus: [Function (anonymous)],
+      retry: true,
+      responseType: 'unknown',
+      errorRedactor: [Function: defaultErrorRedactor],
+      retryConfig: [Object]
+    },
+    [Symbol(Body internals)]: {
+      body: [Gunzip],
+      stream: [Gunzip],
+      boundary: null,
+      disturbed: true,
+      error: null
+    },
+    [Symbol(Response internals)]: {
+      type: 'default',
+      url: 'https://sheets.googleapis.com/v4/spreadsheets/1fP-yFjBdBDqXVAp8AVHI9rdo-dnwJA-mXRmApkUa6rE/values/Survey-1%218%3A8',
+      status: 429,
+      statusText: 'Too Many Requests',
+      headers: [Object],
+      counter: 0,
+      highWaterMark: 16384
+    }
+  },
+  code: 429,
+  status: 429,
+  error: undefined,
+  [Symbol(gaxios-gaxios-error)]: '7.1.1',
+  [cause]: {
+    message: "Quota exceeded for quota metric 'Read requests' and limit 'Read requests per minute per user' of service 'sheets.googleapis.com' for consumer 'project_number:668384902392'.",
+    code: 429,
+    status: 'RESOURCE_EXHAUSTED',
+    errors: [ [Object] ],
+    details: [ [Object], [Object] ]
+  }
+}
+Error in poll_response action: GaxiosError: Quota exceeded for quota metric 'Read requests' and limit 'Read requests per minute per user' of service 'sheets.googleapis.com' for consumer 'project_number:668384902392'.
+    at Gaxios._request (/opt/render/project/src/node_modules/gaxios/build/cjs/src/gaxios.js:154:23)
+    at process.processTicksAndRejections (node:internal/process/task_queues:105:5)
+    at async JWT.requestAsync (/opt/render/project/src/node_modules/google-auth-library/build/src/auth/oauth2client.js:463:20)
+    at async createAPIRequestAsync (/opt/render/project/src/node_modules/googleapis-common/build/src/apirequest.js:308:25)
+    at async getQuestionTextByIndex (/opt/render/project/src/sheets.js:128:17)
+    at async /opt/render/project/src/app.js:356:26
+    at async Array.<anonymous> (/opt/render/project/src/node_modules/@slack/bolt/dist/middleware/builtin.js:175:9)
+    at async Array.onlyActions (/opt/render/project/src/node_modules/@slack/bolt/dist/middleware/builtin.js:34:9)
+    at async Promise.allSettled (index 6)
+    at async /opt/render/project/src/node_modules/@slack/bolt/dist/App.js:678:48 {
+  config: {
+    url: URL {
+      href: 'https://sheets.googleapis.com/v4/spreadsheets/1fP-yFjBdBDqXVAp8AVHI9rdo-dnwJA-mXRmApkUa6rE/values/Survey-1%218%3A8',
+      origin: 'https://sheets.googleapis.com',
+      protocol: 'https:',
+      username: '',
+      password: '',
+      host: 'sheets.googleapis.com',
+      hostname: 'sheets.googleapis.com',
+      port: '',
+      pathname: '/v4/spreadsheets/1fP-yFjBdBDqXVAp8AVHI9rdo-dnwJA-mXRmApkUa6rE/values/Survey-1%218%3A8',
+      search: '',
+      searchParams: URLSearchParams {},
+      hash: ''
+    },
+    method: 'GET',
+    apiVersion: '',
+    userAgentDirectives: [ [Object] ],
+    headers: Headers {
+      'accept-encoding': 'gzip',
+      authorization: '<<REDACTED> - See `errorRedactor` option in `gaxios` for configuration>.',
+      'user-agent': 'google-api-nodejs-client/8.0.0 (gzip)',
+      'x-goog-api-client': 'gdcl/8.0.0 gl-node/22.16.0'
+    },
+    validateStatus: [Function (anonymous)],
+    retry: true,
+    responseType: 'unknown',
+    errorRedactor: [Function: defaultErrorRedactor],
+    retryConfig: {
+      currentRetryAttempt: 3,
+      retry: 3,
+      httpMethodsToRetry: [Array],
+      noResponseRetries: 2,
+      retryDelayMultiplier: 2,
+      timeOfFirstRequest: 1754301399204,
+      totalTimeout: 9007199254740991,
+      maxRetryDelay: 9007199254740991,
+      statusCodesToRetry: [Array]
+    }
+  },
+  response: Response {
+    size: 0,
+    data: { error: [Object] },
+    config: {
+      url: URL {},
+      method: 'GET',
+      apiVersion: '',
+      userAgentDirectives: [Array],
+      headers: Headers {
+        'accept-encoding': 'gzip',
+        authorization: '<<REDACTED> - See `errorRedactor` option in `gaxios` for configuration>.',
+        'user-agent': 'google-api-nodejs-client/8.0.0 (gzip)',
+        'x-goog-api-client': 'gdcl/8.0.0 gl-node/22.16.0'
+      },
+      validateStatus: [Function (anonymous)],
+      retry: true,
+      responseType: 'unknown',
+      errorRedactor: [Function: defaultErrorRedactor],
+      retryConfig: [Object]
+    },
+    [Symbol(Body internals)]: {
+      body: [Gunzip],
+      stream: [Gunzip],
+      boundary: null,
+      disturbed: true,
+      error: null
+    },
+    [Symbol(Response internals)]: {
+      type: 'default',
+      url: 'https://sheets.googleapis.com/v4/spreadsheets/1fP-yFjBdBDqXVAp8AVHI9rdo-dnwJA-mXRmApkUa6rE/values/Survey-1%218%3A8',
+      status: 429,
+      statusText: 'Too Many Requests',
+      headers: [Object],
+      counter: 0,
+      highWaterMark: 16384
+    }
+  },
+  code: 429,
+  status: 429,
+  error: undefined,
+  [Symbol(gaxios-gaxios-error)]: '7.1.1',
+  [cause]: {
+    message: "Quota exceeded for quota metric 'Read requests' and limit 'Read requests per minute per user' of service 'sheets.googleapis.com' for consumer 'project_number:668384902392'.",
+    code: 429,
+    status: 'RESOURCE_EXHAUSTED',
+    errors: [ [Object] ],
+    details: [ [Object], [Object] ]
+  }
+}
+Error in poll_response action: GaxiosError: Quota exceeded for quota metric 'Read requests' and limit 'Read requests per minute per user' of service 'sheets.googleapis.com' for consumer 'project_number:668384902392'.
+    at Gaxios._request (/opt/render/project/src/node_modules/gaxios/build/cjs/src/gaxios.js:154:23)
+    at process.processTicksAndRejections (node:internal/process/task_queues:105:5)
+    at async JWT.requestAsync (/opt/render/project/src/node_modules/google-auth-library/build/src/auth/oauth2client.js:463:20)
+    at async createAPIRequestAsync (/opt/render/project/src/node_modules/googleapis-common/build/src/apirequest.js:308:25)
+    at async getQuestionTextByIndex (/opt/render/project/src/sheets.js:128:17)
+    at async /opt/render/project/src/app.js:356:26
+    at async Array.<anonymous> (/opt/render/project/src/node_modules/@slack/bolt/dist/middleware/builtin.js:175:9)
+    at async Array.onlyActions (/opt/render/project/src/node_modules/@slack/bolt/dist/middleware/builtin.js:34:9)
+    at async Promise.allSettled (index 6)
+    at async /opt/render/project/src/node_modules/@slack/bolt/dist/App.js:678:48 {
+  config: {
+    url: URL {
+      href: 'https://sheets.googleapis.com/v4/spreadsheets/1fP-yFjBdBDqXVAp8AVHI9rdo-dnwJA-mXRmApkUa6rE/values/Survey-1%218%3A8',
+      origin: 'https://sheets.googleapis.com',
+      protocol: 'https:',
+      username: '',
+      password: '',
+      host: 'sheets.googleapis.com',
+      hostname: 'sheets.googleapis.com',
+      port: '',
+      pathname: '/v4/spreadsheets/1fP-yFjBdBDqXVAp8AVHI9rdo-dnwJA-mXRmApkUa6rE/values/Survey-1%218%3A8',
+      search: '',
+      searchParams: URLSearchParams {},
+      hash: ''
+    },
+    method: 'GET',
+    apiVersion: '',
+    userAgentDirectives: [ [Object] ],
+    headers: Headers {
+      'accept-encoding': 'gzip',
+      authorization: '<<REDACTED> - See `errorRedactor` option in `gaxios` for configuration>.',
+      'user-agent': 'google-api-nodejs-client/8.0.0 (gzip)',
+      'x-goog-api-client': 'gdcl/8.0.0 gl-node/22.16.0'
+    },
+    validateStatus: [Function (anonymous)],
+    retry: true,
+    responseType: 'unknown',
+    errorRedactor: [Function: defaultErrorRedactor],
+    retryConfig: {
+      currentRetryAttempt: 3,
+      retry: 3,
+      httpMethodsToRetry: [Array],
+      noResponseRetries: 2,
+      retryDelayMultiplier: 2,
+      timeOfFirstRequest: 1754301399316,
+      totalTimeout: 9007199254740991,
+      maxRetryDelay: 9007199254740991,
+      statusCodesToRetry: [Array]
+    }
+  },
+  response: Response {
+    size: 0,
+    data: { error: [Object] },
+    config: {
+      url: URL {},
+      method: 'GET',
+      apiVersion: '',
+      userAgentDirectives: [Array],
+      headers: Headers {
+        'accept-encoding': 'gzip',
+        authorization: '<<REDACTED> - See `errorRedactor` option in `gaxios` for configuration>.',
+        'user-agent': 'google-api-nodejs-client/8.0.0 (gzip)',
+        'x-goog-api-client': 'gdcl/8.0.0 gl-node/22.16.0'
+      },
+      validateStatus: [Function (anonymous)],
+      retry: true,
+      responseType: 'unknown',
+      errorRedactor: [Function: defaultErrorRedactor],
+      retryConfig: [Object]
+    },
+    [Symbol(Body internals)]: {
+      body: [Gunzip],
+      stream: [Gunzip],
+      boundary: null,
+      disturbed: true,
+      error: null
+    },
+    [Symbol(Response internals)]: {
+      type: 'default',
+      url: 'https://sheets.googleapis.com/v4/spreadsheets/1fP-yFjBdBDqXVAp8AVHI9rdo-dnwJA-mXRmApkUa6rE/values/Survey-1%218%3A8',
+      status: 429,
+      statusText: 'Too Many Requests',
+      headers: [Object],
+      counter: 0,
+      highWaterMark: 16384
+    }
+  },
+  code: 429,
+  status: 429,
+  error: undefined,
+  [Symbol(gaxios-gaxios-error)]: '7.1.1',
+  [cause]: {
+    message: "Quota exceeded for quota metric 'Read requests' and limit 'Read requests per minute per user' of service 'sheets.googleapis.com' for consumer 'project_number:668384902392'.",
+    code: 429,
+    status: 'RESOURCE_EXHAUSTED',
+    errors: [ [Object] ],
+    details: [ [Object], [Object] ]
+  }
+}
+Error in poll_response action: GaxiosError: Quota exceeded for quota metric 'Read requests' and limit 'Read requests per minute per user' of service 'sheets.googleapis.com' for consumer 'project_number:668384902392'.
+    at Gaxios._request (/opt/render/project/src/node_modules/gaxios/build/cjs/src/gaxios.js:154:23)
+    at process.processTicksAndRejections (node:internal/process/task_queues:105:5)
+    at async JWT.requestAsync (/opt/render/project/src/node_modules/google-auth-library/build/src/auth/oauth2client.js:463:20)
+    at async createAPIRequestAsync (/opt/render/project/src/node_modules/googleapis-common/build/src/apirequest.js:308:25)
+    at async getQuestionTextByIndex (/opt/render/project/src/sheets.js:128:17)
+    at async /opt/render/project/src/app.js:356:26
+    at async Array.<anonymous> (/opt/render/project/src/node_modules/@slack/bolt/dist/middleware/builtin.js:175:9)
+    at async Array.onlyActions (/opt/render/project/src/node_modules/@slack/bolt/dist/middleware/builtin.js:34:9)
+    at async Promise.allSettled (index 6)
+    at async /opt/render/project/src/node_modules/@slack/bolt/dist/App.js:678:48 {
+  config: {
+    url: URL {
+      href: 'https://sheets.googleapis.com/v4/spreadsheets/1fP-yFjBdBDqXVAp8AVHI9rdo-dnwJA-mXRmApkUa6rE/values/Survey-1%218%3A8',
+      origin: 'https://sheets.googleapis.com',
+      protocol: 'https:',
+      username: '',
+      password: '',
+      host: 'sheets.googleapis.com',
+      hostname: 'sheets.googleapis.com',
+      port: '',
+      pathname: '/v4/spreadsheets/1fP-yFjBdBDqXVAp8AVHI9rdo-dnwJA-mXRmApkUa6rE/values/Survey-1%218%3A8',
+      search: '',
+      searchParams: URLSearchParams {},
+      hash: ''
+    },
+    method: 'GET',
+    apiVersion: '',
+    userAgentDirectives: [ [Object] ],
+    headers: Headers {
+      'accept-encoding': 'gzip',
+      authorization: '<<REDACTED> - See `errorRedactor` option in `gaxios` for configuration>.',
+      'user-agent': 'google-api-nodejs-client/8.0.0 (gzip)',
+      'x-goog-api-client': 'gdcl/8.0.0 gl-node/22.16.0'
+    },
+    validateStatus: [Function (anonymous)],
+    retry: true,
+    responseType: 'unknown',
+    errorRedactor: [Function: defaultErrorRedactor],
+    retryConfig: {
+      currentRetryAttempt: 3,
+      retry: 3,
+      httpMethodsToRetry: [Array],
+      noResponseRetries: 2,
+      retryDelayMultiplier: 2,
+      timeOfFirstRequest: 1754301399453,
+      totalTimeout: 9007199254740991,
+      maxRetryDelay: 9007199254740991,
+      statusCodesToRetry: [Array]
+    }
+  },
+  response: Response {
+    size: 0,
+    data: { error: [Object] },
+    config: {
+      url: URL {},
+      method: 'GET',
+      apiVersion: '',
+      userAgentDirectives: [Array],
+      headers: Headers {
+        'accept-encoding': 'gzip',
+        authorization: '<<REDACTED> - See `errorRedactor` option in `gaxios` for configuration>.',
+        'user-agent': 'google-api-nodejs-client/8.0.0 (gzip)',
+        'x-goog-api-client': 'gdcl/8.0.0 gl-node/22.16.0'
+      },
+      validateStatus: [Function (anonymous)],
+      retry: true,
+      responseType: 'unknown',
+      errorRedactor: [Function: defaultErrorRedactor],
+      retryConfig: [Object]
+    },
+    [Symbol(Body internals)]: {
+      body: [Gunzip],
+      stream: [Gunzip],
+      boundary: null,
+      disturbed: true,
+      error: null
+    },
+    [Symbol(Response internals)]: {
+      type: 'default',
+      url: 'https://sheets.googleapis.com/v4/spreadsheets/1fP-yFjBdBDqXVAp8AVHI9rdo-dnwJA-mXRmApkUa6rE/values/Survey-1%218%3A8',
+      status: 429,
+      statusText: 'Too Many Requests',
+      headers: [Object],
+      counter: 0,
+      highWaterMark: 16384
+    }
+  },
+  code: 429,
+  status: 429,
+  error: undefined,
+  [Symbol(gaxios-gaxios-error)]: '7.1.1',
+  [cause]: {
+    message: "Quota exceeded for quota metric 'Read requests' and limit 'Read requests per minute per user' of service 'sheets.googleapis.com' for consumer 'project_number:668384902392'.",
+    code: 429,
+    status: 'RESOURCE_EXHAUSTED',
+    errors: [ [Object] ],
+    details: [ [Object], [Object] ]
+  }
+}
+Error in poll_response action: GaxiosError: Quota exceeded for quota metric 'Read requests' and limit 'Read requests per minute per user' of service 'sheets.googleapis.com' for consumer 'project_number:668384902392'.
+    at Gaxios._request (/opt/render/project/src/node_modules/gaxios/build/cjs/src/gaxios.js:154:23)
+    at process.processTicksAndRejections (node:internal/process/task_queues:105:5)
+    at async JWT.requestAsync (/opt/render/project/src/node_modules/google-auth-library/build/src/auth/oauth2client.js:463:20)
+    at async createAPIRequestAsync (/opt/render/project/src/node_modules/googleapis-common/build/src/apirequest.js:308:25)
+    at async getQuestionTextByIndex (/opt/render/project/src/sheets.js:128:17)
+    at async /opt/render/project/src/app.js:356:26
+    at async Array.<anonymous> (/opt/render/project/src/node_modules/@slack/bolt/dist/middleware/builtin.js:175:9)
+    at async Array.onlyActions (/opt/render/project/src/node_modules/@slack/bolt/dist/middleware/builtin.js:34:9)
+    at async Promise.allSettled (index 6)
+    at async /opt/render/project/src/node_modules/@slack/bolt/dist/App.js:678:48 {
+  config: {
+    url: URL {
+      href: 'https://sheets.googleapis.com/v4/spreadsheets/1fP-yFjBdBDqXVAp8AVHI9rdo-dnwJA-mXRmApkUa6rE/values/Survey-1%218%3A8',
+      origin: 'https://sheets.googleapis.com',
+      protocol: 'https:',
+      username: '',
+      password: '',
+      host: 'sheets.googleapis.com',
+      hostname: 'sheets.googleapis.com',
+      port: '',
+      pathname: '/v4/spreadsheets/1fP-yFjBdBDqXVAp8AVHI9rdo-dnwJA-mXRmApkUa6rE/values/Survey-1%218%3A8',
+      search: '',
+      searchParams: URLSearchParams {},
+      hash: ''
+    },
+    method: 'GET',
+    apiVersion: '',
+    userAgentDirectives: [ [Object] ],
+    headers: Headers {
+      'accept-encoding': 'gzip',
+      authorization: '<<REDACTED> - See `errorRedactor` option in `gaxios` for configuration>.',
+      'user-agent': 'google-api-nodejs-client/8.0.0 (gzip)',
+      'x-goog-api-client': 'gdcl/8.0.0 gl-node/22.16.0'
+    },
+    validateStatus: [Function (anonymous)],
+    retry: true,
+    responseType: 'unknown',
+    errorRedactor: [Function: defaultErrorRedactor],
+    retryConfig: {
+      currentRetryAttempt: 3,
+      retry: 3,
+      httpMethodsToRetry: [Array],
+      noResponseRetries: 2,
+      retryDelayMultiplier: 2,
+      timeOfFirstRequest: 1754301399439,
+      totalTimeout: 9007199254740991,
+      maxRetryDelay: 9007199254740991,
+      statusCodesToRetry: [Array]
+    }
+  },
+  response: Response {
+    size: 0,
+    data: { error: [Object] },
+    config: {
+      url: URL {},
+      method: 'GET',
+      apiVersion: '',
+      userAgentDirectives: [Array],
+      headers: Headers {
+        'accept-encoding': 'gzip',
+        authorization: '<<REDACTED> - See `errorRedactor` option in `gaxios` for configuration>.',
+        'user-agent': 'google-api-nodejs-client/8.0.0 (gzip)',
+        'x-goog-api-client': 'gdcl/8.0.0 gl-node/22.16.0'
+      },
+      validateStatus: [Function (anonymous)],
+      retry: true,
+      responseType: 'unknown',
+      errorRedactor: [Function: defaultErrorRedactor],
+      retryConfig: [Object]
+    },
+    [Symbol(Body internals)]: {
+      body: [Gunzip],
+      stream: [Gunzip],
+      boundary: null,
+      disturbed: true,
+      error: null
+    },
+    [Symbol(Response internals)]: {
+      type: 'default',
+      url: 'https://sheets.googleapis.com/v4/spreadsheets/1fP-yFjBdBDqXVAp8AVHI9rdo-dnwJA-mXRmApkUa6rE/values/Survey-1%218%3A8',
+      status: 429,
+      statusText: 'Too Many Requests',
+      headers: [Object],
+      counter: 0,
+      highWaterMark: 16384
+    }
+  },
+  code: 429,
+  status: 429,
+  error: undefined,
+  [Symbol(gaxios-gaxios-error)]: '7.1.1',
+  [cause]: {
+    message: "Quota exceeded for quota metric 'Read requests' and limit 'Read requests per minute per user' of service 'sheets.googleapis.com' for consumer 'project_number:668384902392'.",
+    code: 429,
+    status: 'RESOURCE_EXHAUSTED',
+    errors: [ [Object] ],
+    details: [ [Object], [Object] ]
+  }
+}
+Error in poll_response action: GaxiosError: Quota exceeded for quota metric 'Read requests' and limit 'Read requests per minute per user' of service 'sheets.googleapis.com' for consumer 'project_number:668384902392'.
+    at Gaxios._request (/opt/render/project/src/node_modules/gaxios/build/cjs/src/gaxios.js:154:23)
+    at process.processTicksAndRejections (node:internal/process/task_queues:105:5)
+    at async JWT.requestAsync (/opt/render/project/src/node_modules/google-auth-library/build/src/auth/oauth2client.js:463:20)
+    at async createAPIRequestAsync (/opt/render/project/src/node_modules/googleapis-common/build/src/apirequest.js:308:25)
+    at async getQuestionTextByIndex (/opt/render/project/src/sheets.js:128:17)
+    at async /opt/render/project/src/app.js:356:26
+    at async Array.<anonymous> (/opt/render/project/src/node_modules/@slack/bolt/dist/middleware/builtin.js:175:9)
+    at async Array.onlyActions (/opt/render/project/src/node_modules/@slack/bolt/dist/middleware/builtin.js:34:9)
+    at async Promise.allSettled (index 6)
+    at async /opt/render/project/src/node_modules/@slack/bolt/dist/App.js:678:48 {
+  config: {
+    url: URL {
+      href: 'https://sheets.googleapis.com/v4/spreadsheets/1fP-yFjBdBDqXVAp8AVHI9rdo-dnwJA-mXRmApkUa6rE/values/Survey-1%218%3A8',
+      origin: 'https://sheets.googleapis.com',
+      protocol: 'https:',
+      username: '',
+      password: '',
+      host: 'sheets.googleapis.com',
+      hostname: 'sheets.googleapis.com',
+      port: '',
+      pathname: '/v4/spreadsheets/1fP-yFjBdBDqXVAp8AVHI9rdo-dnwJA-mXRmApkUa6rE/values/Survey-1%218%3A8',
+      search: '',
+      searchParams: URLSearchParams {},
+      hash: ''
+    },
+    method: 'GET',
+    apiVersion: '',
+    userAgentDirectives: [ [Object] ],
+    headers: Headers {
+      'accept-encoding': 'gzip',
+      authorization: '<<REDACTED> - See `errorRedactor` option in `gaxios` for configuration>.',
+      'user-agent': 'google-api-nodejs-client/8.0.0 (gzip)',
+      'x-goog-api-client': 'gdcl/8.0.0 gl-node/22.16.0'
+    },
+    validateStatus: [Function (anonymous)],
+    retry: true,
+    responseType: 'unknown',
+    errorRedactor: [Function: defaultErrorRedactor],
+    retryConfig: {
+      currentRetryAttempt: 3,
+      retry: 3,
+      httpMethodsToRetry: [Array],
+      noResponseRetries: 2,
+      retryDelayMultiplier: 2,
+      timeOfFirstRequest: 1754301400926,
+      totalTimeout: 9007199254740991,
+      maxRetryDelay: 9007199254740991,
+      statusCodesToRetry: [Array]
+    }
+  },
+  response: Response {
+    size: 0,
+    data: { error: [Object] },
+    config: {
+      url: URL {},
+      method: 'GET',
+      apiVersion: '',
+      userAgentDirectives: [Array],
+      headers: Headers {
+        'accept-encoding': 'gzip',
+        authorization: '<<REDACTED> - See `errorRedactor` option in `gaxios` for configuration>.',
+        'user-agent': 'google-api-nodejs-client/8.0.0 (gzip)',
+        'x-goog-api-client': 'gdcl/8.0.0 gl-node/22.16.0'
+      },
+      validateStatus: [Function (anonymous)],
+      retry: true,
+      responseType: 'unknown',
+      errorRedactor: [Function: defaultErrorRedactor],
+      retryConfig: [Object]
+    },
+    [Symbol(Body internals)]: {
+      body: [Gunzip],
+      stream: [Gunzip],
+      boundary: null,
+      disturbed: true,
+      error: null
+    },
+    [Symbol(Response internals)]: {
+      type: 'default',
+      url: 'https://sheets.googleapis.com/v4/spreadsheets/1fP-yFjBdBDqXVAp8AVHI9rdo-dnwJA-mXRmApkUa6rE/values/Survey-1%218%3A8',
+      status: 429,
+      statusText: 'Too Many Requests',
+      headers: [Object],
+      counter: 0,
+      highWaterMark: 16384
+    }
+  },
+  code: 429,
+  status: 429,
+  error: undefined,
+  [Symbol(gaxios-gaxios-error)]: '7.1.1',
+  [cause]: {
+    message: "Quota exceeded for quota metric 'Read requests' and limit 'Read requests per minute per user' of service 'sheets.googleapis.com' for consumer 'project_number:668384902392'.",
+    code: 429,
+    status: 'RESOURCE_EXHAUSTED',
+    errors: [ [Object] ],
+    details: [ [Object], [Object] ]
+  }
+}
+Error in poll_response action: GaxiosError: Quota exceeded for quota metric 'Read requests' and limit 'Read requests per minute per user' of service 'sheets.googleapis.com' for consumer 'project_number:668384902392'.
+    at Gaxios._request (/opt/render/project/src/node_modules/gaxios/build/cjs/src/gaxios.js:154:23)
+    at process.processTicksAndRejections (node:internal/process/task_queues:105:5)
+    at async JWT.requestAsync (/opt/render/project/src/node_modules/google-auth-library/build/src/auth/oauth2client.js:463:20)
+    at async createAPIRequestAsync (/opt/render/project/src/node_modules/googleapis-common/build/src/apirequest.js:308:25)
+    at async getQuestionTextByIndex (/opt/render/project/src/sheets.js:128:17)
+    at async /opt/render/project/src/app.js:356:26
+    at async Array.<anonymous> (/opt/render/project/src/node_modules/@slack/bolt/dist/middleware/builtin.js:175:9)
+    at async Array.onlyActions (/opt/render/project/src/node_modules/@slack/bolt/dist/middleware/builtin.js:34:9)
+    at async Promise.allSettled (index 6)
+    at async /opt/render/project/src/node_modules/@slack/bolt/dist/App.js:678:48 {
+  config: {
+    url: URL {
+      href: 'https://sheets.googleapis.com/v4/spreadsheets/1fP-yFjBdBDqXVAp8AVHI9rdo-dnwJA-mXRmApkUa6rE/values/Survey-1%218%3A8',
+      origin: 'https://sheets.googleapis.com',
+      protocol: 'https:',
+      username: '',
+      password: '',
+      host: 'sheets.googleapis.com',
+      hostname: 'sheets.googleapis.com',
+      port: '',
+      pathname: '/v4/spreadsheets/1fP-yFjBdBDqXVAp8AVHI9rdo-dnwJA-mXRmApkUa6rE/values/Survey-1%218%3A8',
+      search: '',
+      searchParams: URLSearchParams {},
+      hash: ''
+    },
+    method: 'GET',
+    apiVersion: '',
+    userAgentDirectives: [ [Object] ],
+    headers: Headers {
+      'accept-encoding': 'gzip',
+      authorization: '<<REDACTED> - See `errorRedactor` option in `gaxios` for configuration>.',
+      'user-agent': 'google-api-nodejs-client/8.0.0 (gzip)',
+      'x-goog-api-client': 'gdcl/8.0.0 gl-node/22.16.0'
+    },
+    validateStatus: [Function (anonymous)],
+    retry: true,
+    responseType: 'unknown',
+    errorRedactor: [Function: defaultErrorRedactor],
+    retryConfig: {
+      currentRetryAttempt: 3,
+      retry: 3,
+      httpMethodsToRetry: [Array],
+      noResponseRetries: 2,
+      retryDelayMultiplier: 2,
+      timeOfFirstRequest: 1754301405768,
+      totalTimeout: 9007199254740991,
+      maxRetryDelay: 9007199254740991,
+      statusCodesToRetry: [Array]
+    }
+  },
+  response: Response {
+    size: 0,
+    data: { error: [Object] },
+    config: {
+      url: URL {},
+      method: 'GET',
+      apiVersion: '',
+      userAgentDirectives: [Array],
+      headers: Headers {
+        'accept-encoding': 'gzip',
+        authorization: '<<REDACTED> - See `errorRedactor` option in `gaxios` for configuration>.',
+        'user-agent': 'google-api-nodejs-client/8.0.0 (gzip)',
+        'x-goog-api-client': 'gdcl/8.0.0 gl-node/22.16.0'
+      },
+      validateStatus: [Function (anonymous)],
+      retry: true,
+      responseType: 'unknown',
+      errorRedactor: [Function: defaultErrorRedactor],
+      retryConfig: [Object]
+    },
+    [Symbol(Body internals)]: {
+      body: [Gunzip],
+      stream: [Gunzip],
+      boundary: null,
+      disturbed: true,
+      error: null
+    },
+    [Symbol(Response internals)]: {
+      type: 'default',
+      url: 'https://sheets.googleapis.com/v4/spreadsheets/1fP-yFjBdBDqXVAp8AVHI9rdo-dnwJA-mXRmApkUa6rE/values/Survey-1%218%3A8',
+      status: 429,
+      statusText: 'Too Many Requests',
+      headers: [Object],
+      counter: 0,
+      highWaterMark: 16384
+    }
+  },
+  code: 429,
+  status: 429,
+  error: undefined,
+  [Symbol(gaxios-gaxios-error)]: '7.1.1',
+  [cause]: {
+    message: "Quota exceeded for quota metric 'Read requests' and limit 'Read requests per minute per user' of service 'sheets.googleapis.com' for consumer 'project_number:668384902392'.",
+    code: 429,
+    status: 'RESOURCE_EXHAUSTED',
+    errors: [ [Object] ],
+    details: [ [Object], [Object] ]
+  }
+}
+Error in poll_response action: GaxiosError: Quota exceeded for quota metric 'Read requests' and limit 'Read requests per minute per user' of service 'sheets.googleapis.com' for consumer 'project_number:668384902392'.
+    at Gaxios._request (/opt/render/project/src/node_modules/gaxios/build/cjs/src/gaxios.js:154:23)
+    at process.processTicksAndRejections (node:internal/process/task_queues:105:5)
+    at async JWT.requestAsync (/opt/render/project/src/node_modules/google-auth-library/build/src/auth/oauth2client.js:463:20)
+    at async createAPIRequestAsync (/opt/render/project/src/node_modules/googleapis-common/build/src/apirequest.js:308:25)
+    at async getQuestionTextByIndex (/opt/render/project/src/sheets.js:128:17)
+    at async /opt/render/project/src/app.js:356:26
+    at async Array.<anonymous> (/opt/render/project/src/node_modules/@slack/bolt/dist/middleware/builtin.js:175:9)
+    at async Array.onlyActions (/opt/render/project/src/node_modules/@slack/bolt/dist/middleware/builtin.js:34:9)
+    at async Promise.allSettled (index 6)
+    at async /opt/render/project/src/node_modules/@slack/bolt/dist/App.js:678:48 {
+  config: {
+    url: URL {
+      href: 'https://sheets.googleapis.com/v4/spreadsheets/1fP-yFjBdBDqXVAp8AVHI9rdo-dnwJA-mXRmApkUa6rE/values/Survey-1%218%3A8',
+      origin: 'https://sheets.googleapis.com',
+      protocol: 'https:',
+      username: '',
+      password: '',
+      host: 'sheets.googleapis.com',
+      hostname: 'sheets.googleapis.com',
+      port: '',
+      pathname: '/v4/spreadsheets/1fP-yFjBdBDqXVAp8AVHI9rdo-dnwJA-mXRmApkUa6rE/values/Survey-1%218%3A8',
+      search: '',
+      searchParams: URLSearchParams {},
+      hash: ''
+    },
+    method: 'GET',
+    apiVersion: '',
+    userAgentDirectives: [ [Object] ],
+    headers: Headers {
+      'accept-encoding': 'gzip',
+      authorization: '<<REDACTED> - See `errorRedactor` option in `gaxios` for configuration>.',
+      'user-agent': 'google-api-nodejs-client/8.0.0 (gzip)',
+      'x-goog-api-client': 'gdcl/8.0.0 gl-node/22.16.0'
+    },
+    validateStatus: [Function (anonymous)],
+    retry: true,
+    responseType: 'unknown',
+    errorRedactor: [Function: defaultErrorRedactor],
+    retryConfig: {
+      currentRetryAttempt: 3,
+      retry: 3,
+      httpMethodsToRetry: [Array],
+      noResponseRetries: 2,
+      retryDelayMultiplier: 2,
+      timeOfFirstRequest: 1754301406498,
+      totalTimeout: 9007199254740991,
+      maxRetryDelay: 9007199254740991,
+      statusCodesToRetry: [Array]
+    }
+  },
+  response: Response {
+    size: 0,
+    data: { error: [Object] },
+    config: {
+      url: URL {},
+      method: 'GET',
+      apiVersion: '',
+      userAgentDirectives: [Array],
+      headers: Headers {
+        'accept-encoding': 'gzip',
+        authorization: '<<REDACTED> - See `errorRedactor` option in `gaxios` for configuration>.',
+        'user-agent': 'google-api-nodejs-client/8.0.0 (gzip)',
+        'x-goog-api-client': 'gdcl/8.0.0 gl-node/22.16.0'
+      },
+      validateStatus: [Function (anonymous)],
+      retry: true,
+      responseType: 'unknown',
+      errorRedactor: [Function: defaultErrorRedactor],
+      retryConfig: [Object]
+    },
+    [Symbol(Body internals)]: {
+      body: [Gunzip],
+      stream: [Gunzip],
+      boundary: null,
+      disturbed: true,
+      error: null
+    },
+    [Symbol(Response internals)]: {
+      type: 'default',
+      url: 'https://sheets.googleapis.com/v4/spreadsheets/1fP-yFjBdBDqXVAp8AVHI9rdo-dnwJA-mXRmApkUa6rE/values/Survey-1%218%3A8',
+      status: 429,
+      statusText: 'Too Many Requests',
+      headers: [Object],
+      counter: 0,
+      highWaterMark: 16384
+    }
+  },
+  code: 429,
+  status: 429,
+  error: undefined,
+  [Symbol(gaxios-gaxios-error)]: '7.1.1',
+  [cause]: {
+    message: "Quota exceeded for quota metric 'Read requests' and limit 'Read requests per minute per user' of service 'sheets.googleapis.com' for consumer 'project_number:668384902392'.",
+    code: 429,
+    status: 'RESOURCE_EXHAUSTED',
+    errors: [ [Object] ],
+    details: [ [Object], [Object] ]
+  }
+}
+Error in poll_response action: GaxiosError: Quota exceeded for quota metric 'Read requests' and limit 'Read requests per minute per user' of service 'sheets.googleapis.com' for consumer 'project_number:668384902392'.
+    at Gaxios._request (/opt/render/project/src/node_modules/gaxios/build/cjs/src/gaxios.js:154:23)
+    at process.processTicksAndRejections (node:internal/process/task_queues:105:5)
+    at async JWT.requestAsync (/opt/render/project/src/node_modules/google-auth-library/build/src/auth/oauth2client.js:463:20)
+    at async createAPIRequestAsync (/opt/render/project/src/node_modules/googleapis-common/build/src/apirequest.js:308:25)
+    at async getQuestionTextByIndex (/opt/render/project/src/sheets.js:128:17)
+    at async /opt/render/project/src/app.js:356:26
+    at async Array.<anonymous> (/opt/render/project/src/node_modules/@slack/bolt/dist/middleware/builtin.js:175:9)
+    at async Array.onlyActions (/opt/render/project/src/node_modules/@slack/bolt/dist/middleware/builtin.js:34:9)
+    at async Promise.allSettled (index 6)
+    at async /opt/render/project/src/node_modules/@slack/bolt/dist/App.js:678:48 {
+  config: {
+    url: URL {
+      href: 'https://sheets.googleapis.com/v4/spreadsheets/1fP-yFjBdBDqXVAp8AVHI9rdo-dnwJA-mXRmApkUa6rE/values/Survey-1%218%3A8',
+      origin: 'https://sheets.googleapis.com',
+      protocol: 'https:',
+      username: '',
+      password: '',
+      host: 'sheets.googleapis.com',
+      hostname: 'sheets.googleapis.com',
+      port: '',
+      pathname: '/v4/spreadsheets/1fP-yFjBdBDqXVAp8AVHI9rdo-dnwJA-mXRmApkUa6rE/values/Survey-1%218%3A8',
+      search: '',
+      searchParams: URLSearchParams {},
+      hash: ''
+    },
+    method: 'GET',
+    apiVersion: '',
+    userAgentDirectives: [ [Object] ],
+    headers: Headers {
+      'accept-encoding': 'gzip',
+      authorization: '<<REDACTED> - See `errorRedactor` option in `gaxios` for configuration>.',
+      'user-agent': 'google-api-nodejs-client/8.0.0 (gzip)',
+      'x-goog-api-client': 'gdcl/8.0.0 gl-node/22.16.0'
+    },
+    validateStatus: [Function (anonymous)],
+    retry: true,
+    responseType: 'unknown',
+    errorRedactor: [Function: defaultErrorRedactor],
+    retryConfig: {
+      currentRetryAttempt: 3,
+      retry: 3,
+      httpMethodsToRetry: [Array],
+      noResponseRetries: 2,
+      retryDelayMultiplier: 2,
+      timeOfFirstRequest: 1754301411240,
+      totalTimeout: 9007199254740991,
+      maxRetryDelay: 9007199254740991,
+      statusCodesToRetry: [Array]
+    }
+  },
+  response: Response {
+    size: 0,
+    data: { error: [Object] },
+    config: {
+      url: URL {},
+      method: 'GET',
+      apiVersion: '',
+      userAgentDirectives: [Array],
+      headers: Headers {
+        'accept-encoding': 'gzip',
+        authorization: '<<REDACTED> - See `errorRedactor` option in `gaxios` for configuration>.',
+        'user-agent': 'google-api-nodejs-client/8.0.0 (gzip)',
+        'x-goog-api-client': 'gdcl/8.0.0 gl-node/22.16.0'
+      },
+      validateStatus: [Function (anonymous)],
+      retry: true,
+      responseType: 'unknown',
+      errorRedactor: [Function: defaultErrorRedactor],
+      retryConfig: [Object]
+    },
+    [Symbol(Body internals)]: {
+      body: [Gunzip],
+      stream: [Gunzip],
+      boundary: null,
+      disturbed: true,
+      error: null
+    },
+    [Symbol(Response internals)]: {
+      type: 'default',
+      url: 'https://sheets.googleapis.com/v4/spreadsheets/1fP-yFjBdBDqXVAp8AVHI9rdo-dnwJA-mXRmApkUa6rE/values/Survey-1%218%3A8',
+      status: 429,
+      statusText: 'Too Many Requests',
+      headers: [Object],
+      counter: 0,
+      highWaterMark: 16384
+    }
+  },
+  code: 429,
+  status: 429,
+  error: undefined,
+  [Symbol(gaxios-gaxios-error)]: '7.1.1',
+  [cause]: {
+    message: "Quota exceeded for quota metric 'Read requests' and limit 'Read requests per minute per user' of service 'sheets.googleapis.com' for consumer 'project_number:668384902392'.",
+    code: 429,
+    status: 'RESOURCE_EXHAUSTED',
+    errors: [ [Object] ],
+    details: [ [Object], [Object] ]
+  }
+}
+Error in poll_response action: GaxiosError: Quota exceeded for quota metric 'Read requests' and limit 'Read requests per minute per user' of service 'sheets.googleapis.com' for consumer 'project_number:668384902392'.
+    at Gaxios._request (/opt/render/project/src/node_modules/gaxios/build/cjs/src/gaxios.js:154:23)
+    at process.processTicksAndRejections (node:internal/process/task_queues:105:5)
+    at async JWT.requestAsync (/opt/render/project/src/node_modules/google-auth-library/build/src/auth/oauth2client.js:463:20)
+    at async createAPIRequestAsync (/opt/render/project/src/node_modules/googleapis-common/build/src/apirequest.js:308:25)
+    at async getQuestionTextByIndex (/opt/render/project/src/sheets.js:128:17)
+    at async /opt/render/project/src/app.js:356:26
+    at async Array.<anonymous> (/opt/render/project/src/node_modules/@slack/bolt/dist/middleware/builtin.js:175:9)
+    at async Array.onlyActions (/opt/render/project/src/node_modules/@slack/bolt/dist/middleware/builtin.js:34:9)
+    at async Promise.allSettled (index 6)
+    at async /opt/render/project/src/node_modules/@slack/bolt/dist/App.js:678:48 {
+  config: {
+    url: URL {
+      href: 'https://sheets.googleapis.com/v4/spreadsheets/1fP-yFjBdBDqXVAp8AVHI9rdo-dnwJA-mXRmApkUa6rE/values/Survey-1%218%3A8',
+      origin: 'https://sheets.googleapis.com',
+      protocol: 'https:',
+      username: '',
+      password: '',
+      host: 'sheets.googleapis.com',
+      hostname: 'sheets.googleapis.com',
+      port: '',
+      pathname: '/v4/spreadsheets/1fP-yFjBdBDqXVAp8AVHI9rdo-dnwJA-mXRmApkUa6rE/values/Survey-1%218%3A8',
+      search: '',
+      searchParams: URLSearchParams {},
+      hash: ''
+    },
+    method: 'GET',
+    apiVersion: '',
+    userAgentDirectives: [ [Object] ],
+    headers: Headers {
+      'accept-encoding': 'gzip',
+      authorization: '<<REDACTED> - See `errorRedactor` option in `gaxios` for configuration>.',
+      'user-agent': 'google-api-nodejs-client/8.0.0 (gzip)',
+      'x-goog-api-client': 'gdcl/8.0.0 gl-node/22.16.0'
+    },
+    validateStatus: [Function (anonymous)],
+    retry: true,
+    responseType: 'unknown',
+    errorRedactor: [Function: defaultErrorRedactor],
+    retryConfig: {
+      currentRetryAttempt: 3,
+      retry: 3,
+      httpMethodsToRetry: [Array],
+      noResponseRetries: 2,
+      retryDelayMultiplier: 2,
+      timeOfFirstRequest: 1754301411818,
+      totalTimeout: 9007199254740991,
+      maxRetryDelay: 9007199254740991,
+      statusCodesToRetry: [Array]
+    }
+  },
+  response: Response {
+    size: 0,
+    data: { error: [Object] },
+    config: {
+      url: URL {},
+      method: 'GET',
+      apiVersion: '',
+      userAgentDirectives: [Array],
+      headers: Headers {
+        'accept-encoding': 'gzip',
+        authorization: '<<REDACTED> - See `errorRedactor` option in `gaxios` for configuration>.',
+        'user-agent': 'google-api-nodejs-client/8.0.0 (gzip)',
+        'x-goog-api-client': 'gdcl/8.0.0 gl-node/22.16.0'
+      },
+      validateStatus: [Function (anonymous)],
+      retry: true,
+      responseType: 'unknown',
+      errorRedactor: [Function: defaultErrorRedactor],
+      retryConfig: [Object]
+    },
+    [Symbol(Body internals)]: {
+      body: [Gunzip],
+      stream: [Gunzip],
+      boundary: null,
+      disturbed: true,
+      error: null
+    },
+    [Symbol(Response internals)]: {
+      type: 'default',
+      url: 'https://sheets.googleapis.com/v4/spreadsheets/1fP-yFjBdBDqXVAp8AVHI9rdo-dnwJA-mXRmApkUa6rE/values/Survey-1%218%3A8',
+      status: 429,
+      statusText: 'Too Many Requests',
+      headers: [Object],
+      counter: 0,
+      highWaterMark: 16384
+    }
+  },
+  code: 429,
+  status: 429,
+  error: undefined,
+  [Symbol(gaxios-gaxios-error)]: '7.1.1',
+  [cause]: {
+    message: "Quota exceeded for quota metric 'Read requests' and limit 'Read requests per minute per user' of service 'sheets.googleapis.com' for consumer 'project_number:668384902392'.",
+    code: 429,
+    status: 'RESOURCE_EXHAUSTED',
+    errors: [ [Object] ],
+    details: [ [Object], [Object] ]
+  }
+}
+Error in poll_response action: GaxiosError: Quota exceeded for quota metric 'Read requests' and limit 'Read requests per minute per user' of service 'sheets.googleapis.com' for consumer 'project_number:668384902392'.
+    at Gaxios._request (/opt/render/project/src/node_modules/gaxios/build/cjs/src/gaxios.js:154:23)
+    at process.processTicksAndRejections (node:internal/process/task_queues:105:5)
+    at async JWT.requestAsync (/opt/render/project/src/node_modules/google-auth-library/build/src/auth/oauth2client.js:463:20)
+    at async createAPIRequestAsync (/opt/render/project/src/node_modules/googleapis-common/build/src/apirequest.js:308:25)
+    at async getQuestionTextByIndex (/opt/render/project/src/sheets.js:128:17)
+    at async /opt/render/project/src/app.js:356:26
+    at async Array.<anonymous> (/opt/render/project/src/node_modules/@slack/bolt/dist/middleware/builtin.js:175:9)
+    at async Array.onlyActions (/opt/render/project/src/node_modules/@slack/bolt/dist/middleware/builtin.js:34:9)
+    at async Promise.allSettled (index 6)
+    at async /opt/render/project/src/node_modules/@slack/bolt/dist/App.js:678:48 {
+  config: {
+    url: URL {
+      href: 'https://sheets.googleapis.com/v4/spreadsheets/1fP-yFjBdBDqXVAp8AVHI9rdo-dnwJA-mXRmApkUa6rE/values/Survey-1%218%3A8',
+      origin: 'https://sheets.googleapis.com',
+      protocol: 'https:',
+      username: '',
+      password: '',
+      host: 'sheets.googleapis.com',
+      hostname: 'sheets.googleapis.com',
+      port: '',
+      pathname: '/v4/spreadsheets/1fP-yFjBdBDqXVAp8AVHI9rdo-dnwJA-mXRmApkUa6rE/values/Survey-1%218%3A8',
+      search: '',
+      searchParams: URLSearchParams {},
+      hash: ''
+    },
+    method: 'GET',
+    apiVersion: '',
+    userAgentDirectives: [ [Object] ],
+    headers: Headers {
+      'accept-encoding': 'gzip',
+      authorization: '<<REDACTED> - See `errorRedactor` option in `gaxios` for configuration>.',
+      'user-agent': 'google-api-nodejs-client/8.0.0 (gzip)',
+      'x-goog-api-client': 'gdcl/8.0.0 gl-node/22.16.0'
+    },
+    validateStatus: [Function (anonymous)],
+    retry: true,
+    responseType: 'unknown',
+    errorRedactor: [Function: defaultErrorRedactor],
+    retryConfig: {
+      currentRetryAttempt: 3,
+      retry: 3,
+      httpMethodsToRetry: [Array],
+      noResponseRetries: 2,
+      retryDelayMultiplier: 2,
+      timeOfFirstRequest: 1754301411943,
+      totalTimeout: 9007199254740991,
+      maxRetryDelay: 9007199254740991,
+      statusCodesToRetry: [Array]
+    }
+  },
+  response: Response {
+    size: 0,
+    data: { error: [Object] },
+    config: {
+      url: URL {},
+      method: 'GET',
+      apiVersion: '',
+      userAgentDirectives: [Array],
+      headers: Headers {
+        'accept-encoding': 'gzip',
+        authorization: '<<REDACTED> - See `errorRedactor` option in `gaxios` for configuration>.',
+        'user-agent': 'google-api-nodejs-client/8.0.0 (gzip)',
+        'x-goog-api-client': 'gdcl/8.0.0 gl-node/22.16.0'
+      },
+      validateStatus: [Function (anonymous)],
+      retry: true,
+      responseType: 'unknown',
+      errorRedactor: [Function: defaultErrorRedactor],
+      retryConfig: [Object]
+    },
+    [Symbol(Body internals)]: {
+      body: [Gunzip],
+      stream: [Gunzip],
+      boundary: null,
+      disturbed: true,
+      error: null
+    },
+    [Symbol(Response internals)]: {
+      type: 'default',
+      url: 'https://sheets.googleapis.com/v4/spreadsheets/1fP-yFjBdBDqXVAp8AVHI9rdo-dnwJA-mXRmApkUa6rE/values/Survey-1%218%3A8',
+      status: 429,
+      statusText: 'Too Many Requests',
+      headers: [Object],
+      counter: 0,
+      highWaterMark: 16384
+    }
+  },
+  code: 429,
+  status: 429,
+  error: undefined,
+  [Symbol(gaxios-gaxios-error)]: '7.1.1',
+  [cause]: {
+    message: "Quota exceeded for quota metric 'Read requests' and limit 'Read requests per minute per user' of service 'sheets.googleapis.com' for consumer 'project_number:668384902392'.",
+    code: 429,
+    status: 'RESOURCE_EXHAUSTED',
+    errors: [ [Object] ],
+    details: [ [Object], [Object] ]
+  }
+}
+Error in poll_response action: GaxiosError: Quota exceeded for quota metric 'Read requests' and limit 'Read requests per minute per user' of service 'sheets.googleapis.com' for consumer 'project_number:668384902392'.
+    at Gaxios._request (/opt/render/project/src/node_modules/gaxios/build/cjs/src/gaxios.js:154:23)
+    at process.processTicksAndRejections (node:internal/process/task_queues:105:5)
+    at async JWT.requestAsync (/opt/render/project/src/node_modules/google-auth-library/build/src/auth/oauth2client.js:463:20)
+    at async createAPIRequestAsync (/opt/render/project/src/node_modules/googleapis-common/build/src/apirequest.js:308:25)
+    at async getQuestionTextByIndex (/opt/render/project/src/sheets.js:128:17)
+    at async /opt/render/project/src/app.js:356:26
+    at async Array.<anonymous> (/opt/render/project/src/node_modules/@slack/bolt/dist/middleware/builtin.js:175:9)
+    at async Array.onlyActions (/opt/render/project/src/node_modules/@slack/bolt/dist/middleware/builtin.js:34:9)
+    at async Promise.allSettled (index 6)
+    at async /opt/render/project/src/node_modules/@slack/bolt/dist/App.js:678:48 {
+  config: {
+    url: URL {
+      href: 'https://sheets.googleapis.com/v4/spreadsheets/1fP-yFjBdBDqXVAp8AVHI9rdo-dnwJA-mXRmApkUa6rE/values/Survey-1%218%3A8',
+      origin: 'https://sheets.googleapis.com',
+      protocol: 'https:',
+      username: '',
+      password: '',
+      host: 'sheets.googleapis.com',
+      hostname: 'sheets.googleapis.com',
+      port: '',
+      pathname: '/v4/spreadsheets/1fP-yFjBdBDqXVAp8AVHI9rdo-dnwJA-mXRmApkUa6rE/values/Survey-1%218%3A8',
+      search: '',
+      searchParams: URLSearchParams {},
+      hash: ''
+    },
+    method: 'GET',
+    apiVersion: '',
+    userAgentDirectives: [ [Object] ],
+    headers: Headers {
+      'accept-encoding': 'gzip',
+      authorization: '<<REDACTED> - See `errorRedactor` option in `gaxios` for configuration>.',
+      'user-agent': 'google-api-nodejs-client/8.0.0 (gzip)',
+      'x-goog-api-client': 'gdcl/8.0.0 gl-node/22.16.0'
+    },
+    validateStatus: [Function (anonymous)],
+    retry: true,
+    responseType: 'unknown',
+    errorRedactor: [Function: defaultErrorRedactor],
+    retryConfig: {
+      currentRetryAttempt: 3,
+      retry: 3,
+      httpMethodsToRetry: [Array],
+      noResponseRetries: 2,
+      retryDelayMultiplier: 2,
+      timeOfFirstRequest: 1754301412324,
+      totalTimeout: 9007199254740991,
+      maxRetryDelay: 9007199254740991,
+      statusCodesToRetry: [Array]
+    }
+  },
+  response: Response {
+    size: 0,
+    data: { error: [Object] },
+    config: {
+      url: URL {},
+      method: 'GET',
+      apiVersion: '',
+      userAgentDirectives: [Array],
+      headers: Headers {
+        'accept-encoding': 'gzip',
+        authorization: '<<REDACTED> - See `errorRedactor` option in `gaxios` for configuration>.',
+        'user-agent': 'google-api-nodejs-client/8.0.0 (gzip)',
+        'x-goog-api-client': 'gdcl/8.0.0 gl-node/22.16.0'
+      },
+      validateStatus: [Function (anonymous)],
+      retry: true,
+      responseType: 'unknown',
+      errorRedactor: [Function: defaultErrorRedactor],
+      retryConfig: [Object]
+    },
+    [Symbol(Body internals)]: {
+      body: [Gunzip],
+      stream: [Gunzip],
+      boundary: null,
+      disturbed: true,
+      error: null
+    },
+    [Symbol(Response internals)]: {
+      type: 'default',
+      url: 'https://sheets.googleapis.com/v4/spreadsheets/1fP-yFjBdBDqXVAp8AVHI9rdo-dnwJA-mXRmApkUa6rE/values/Survey-1%218%3A8',
+      status: 429,
+      statusText: 'Too Many Requests',
+      headers: [Object],
+      counter: 0,
+      highWaterMark: 16384
+    }
+  },
+  code: 429,
+  status: 429,
+  error: undefined,
+  [Symbol(gaxios-gaxios-error)]: '7.1.1',
+  [cause]: {
+    message: "Quota exceeded for quota metric 'Read requests' and limit 'Read requests per minute per user' of service 'sheets.googleapis.com' for consumer 'project_number:668384902392'.",
+    code: 429,
+    status: 'RESOURCE_EXHAUSTED',
+    errors: [ [Object] ],
+    details: [ [Object], [Object] ]
+  }
+}
+Error in poll_response action: GaxiosError: Quota exceeded for quota metric 'Read requests' and limit 'Read requests per minute per user' of service 'sheets.googleapis.com' for consumer 'project_number:668384902392'.
+    at Gaxios._request (/opt/render/project/src/node_modules/gaxios/build/cjs/src/gaxios.js:154:23)
+    at process.processTicksAndRejections (node:internal/process/task_queues:105:5)
+    at async JWT.requestAsync (/opt/render/project/src/node_modules/google-auth-library/build/src/auth/oauth2client.js:463:20)
+    at async createAPIRequestAsync (/opt/render/project/src/node_modules/googleapis-common/build/src/apirequest.js:308:25)
+    at async getQuestionTextByIndex (/opt/render/project/src/sheets.js:128:17)
+    at async /opt/render/project/src/app.js:356:26
+    at async Array.<anonymous> (/opt/render/project/src/node_modules/@slack/bolt/dist/middleware/builtin.js:175:9)
+    at async Array.onlyActions (/opt/render/project/src/node_modules/@slack/bolt/dist/middleware/builtin.js:34:9)
+    at async Promise.allSettled (index 6)
+    at async /opt/render/project/src/node_modules/@slack/bolt/dist/App.js:678:48 {
+  config: {
+    url: URL {
+      href: 'https://sheets.googleapis.com/v4/spreadsheets/1fP-yFjBdBDqXVAp8AVHI9rdo-dnwJA-mXRmApkUa6rE/values/Survey-1%218%3A8',
+      origin: 'https://sheets.googleapis.com',
+      protocol: 'https:',
+      username: '',
+      password: '',
+      host: 'sheets.googleapis.com',
+      hostname: 'sheets.googleapis.com',
+      port: '',
+      pathname: '/v4/spreadsheets/1fP-yFjBdBDqXVAp8AVHI9rdo-dnwJA-mXRmApkUa6rE/values/Survey-1%218%3A8',
+      search: '',
+      searchParams: URLSearchParams {},
+      hash: ''
+    },
+    method: 'GET',
+    apiVersion: '',
+    userAgentDirectives: [ [Object] ],
+    headers: Headers {
+      'accept-encoding': 'gzip',
+      authorization: '<<REDACTED> - See `errorRedactor` option in `gaxios` for configuration>.',
+      'user-agent': 'google-api-nodejs-client/8.0.0 (gzip)',
+      'x-goog-api-client': 'gdcl/8.0.0 gl-node/22.16.0'
+    },
+    validateStatus: [Function (anonymous)],
+    retry: true,
+    responseType: 'unknown',
+    errorRedactor: [Function: defaultErrorRedactor],
+    retryConfig: {
+      currentRetryAttempt: 3,
+      retry: 3,
+      httpMethodsToRetry: [Array],
+      noResponseRetries: 2,
+      retryDelayMultiplier: 2,
+      timeOfFirstRequest: 1754301415718,
+      totalTimeout: 9007199254740991,
+      maxRetryDelay: 9007199254740991,
+      statusCodesToRetry: [Array]
+    }
+  },
+  response: Response {
+    size: 0,
+    data: { error: [Object] },
+    config: {
+      url: URL {},
+      method: 'GET',
+      apiVersion: '',
+      userAgentDirectives: [Array],
+      headers: Headers {
+        'accept-encoding': 'gzip',
+        authorization: '<<REDACTED> - See `errorRedactor` option in `gaxios` for configuration>.',
+        'user-agent': 'google-api-nodejs-client/8.0.0 (gzip)',
+        'x-goog-api-client': 'gdcl/8.0.0 gl-node/22.16.0'
+      },
+      validateStatus: [Function (anonymous)],
+      retry: true,
+      responseType: 'unknown',
+      errorRedactor: [Function: defaultErrorRedactor],
+      retryConfig: [Object]
+    },
+    [Symbol(Body internals)]: {
+      body: [Gunzip],
+      stream: [Gunzip],
+      boundary: null,
+      disturbed: true,
+      error: null
+    },
+    [Symbol(Response internals)]: {
+      type: 'default',
+      url: 'https://sheets.googleapis.com/v4/spreadsheets/1fP-yFjBdBDqXVAp8AVHI9rdo-dnwJA-mXRmApkUa6rE/values/Survey-1%218%3A8',
+      status: 429,
+      statusText: 'Too Many Requests',
+      headers: [Object],
+      counter: 0,
+      highWaterMark: 16384
+    }
+  },
+  code: 429,
+  status: 429,
+  error: undefined,
+  [Symbol(gaxios-gaxios-error)]: '7.1.1',
+  [cause]: {
+    message: "Quota exceeded for quota metric 'Read requests' and limit 'Read requests per minute per user' of service 'sheets.googleapis.com' for consumer 'project_number:668384902392'.",
+    code: 429,
+    status: 'RESOURCE_EXHAUSTED',
+    errors: [ [Object] ],
+    details: [ [Object], [Object] ]
+  }
+}
+Error in poll_response action: GaxiosError: Quota exceeded for quota metric 'Read requests' and limit 'Read requests per minute per user' of service 'sheets.googleapis.com' for consumer 'project_number:668384902392'.
+    at Gaxios._request (/opt/render/project/src/node_modules/gaxios/build/cjs/src/gaxios.js:154:23)
+    at process.processTicksAndRejections (node:internal/process/task_queues:105:5)
+    at async JWT.requestAsync (/opt/render/project/src/node_modules/google-auth-library/build/src/auth/oauth2client.js:463:20)
+    at async createAPIRequestAsync (/opt/render/project/src/node_modules/googleapis-common/build/src/apirequest.js:308:25)
+    at async getQuestionTextByIndex (/opt/render/project/src/sheets.js:128:17)
+    at async /opt/render/project/src/app.js:356:26
+    at async Array.<anonymous> (/opt/render/project/src/node_modules/@slack/bolt/dist/middleware/builtin.js:175:9)
+    at async Array.onlyActions (/opt/render/project/src/node_modules/@slack/bolt/dist/middleware/builtin.js:34:9)
+    at async Promise.allSettled (index 6)
+    at async /opt/render/project/src/node_modules/@slack/bolt/dist/App.js:678:48 {
+  config: {
+    url: URL {
+      href: 'https://sheets.googleapis.com/v4/spreadsheets/1fP-yFjBdBDqXVAp8AVHI9rdo-dnwJA-mXRmApkUa6rE/values/Survey-1%218%3A8',
+      origin: 'https://sheets.googleapis.com',
+      protocol: 'https:',
+      username: '',
+      password: '',
+      host: 'sheets.googleapis.com',
+      hostname: 'sheets.googleapis.com',
+      port: '',
+      pathname: '/v4/spreadsheets/1fP-yFjBdBDqXVAp8AVHI9rdo-dnwJA-mXRmApkUa6rE/values/Survey-1%218%3A8',
+      search: '',
+      searchParams: URLSearchParams {},
+      hash: ''
+    },
+    method: 'GET',
+    apiVersion: '',
+    userAgentDirectives: [ [Object] ],
+    headers: Headers {
+      'accept-encoding': 'gzip',
+      authorization: '<<REDACTED> - See `errorRedactor` option in `gaxios` for configuration>.',
+      'user-agent': 'google-api-nodejs-client/8.0.0 (gzip)',
+      'x-goog-api-client': 'gdcl/8.0.0 gl-node/22.16.0'
+    },
+    validateStatus: [Function (anonymous)],
+    retry: true,
+    responseType: 'unknown',
+    errorRedactor: [Function: defaultErrorRedactor],
+    retryConfig: {
+      currentRetryAttempt: 3,
+      retry: 3,
+      httpMethodsToRetry: [Array],
+      noResponseRetries: 2,
+      retryDelayMultiplier: 2,
+      timeOfFirstRequest: 1754301420381,
+      totalTimeout: 9007199254740991,
+      maxRetryDelay: 9007199254740991,
+      statusCodesToRetry: [Array]
+    }
+  },
+  response: Response {
+    size: 0,
+    data: { error: [Object] },
+    config: {
+      url: URL {},
+      method: 'GET',
+      apiVersion: '',
+      userAgentDirectives: [Array],
+      headers: Headers {
+        'accept-encoding': 'gzip',
+        authorization: '<<REDACTED> - See `errorRedactor` option in `gaxios` for configuration>.',
+        'user-agent': 'google-api-nodejs-client/8.0.0 (gzip)',
+        'x-goog-api-client': 'gdcl/8.0.0 gl-node/22.16.0'
+      },
+      validateStatus: [Function (anonymous)],
+      retry: true,
+      responseType: 'unknown',
+      errorRedactor: [Function: defaultErrorRedactor],
+      retryConfig: [Object]
+    },
+    [Symbol(Body internals)]: {
+      body: [Gunzip],
+      stream: [Gunzip],
+      boundary: null,
+      disturbed: true,
+      error: null
+    },
+    [Symbol(Response internals)]: {
+      type: 'default',
+      url: 'https://sheets.googleapis.com/v4/spreadsheets/1fP-yFjBdBDqXVAp8AVHI9rdo-dnwJA-mXRmApkUa6rE/values/Survey-1%218%3A8',
+      status: 429,
+      statusText: 'Too Many Requests',
+      headers: [Object],
+      counter: 0,
+      highWaterMark: 16384
+    }
+  },
+  code: 429,
+  status: 429,
+  error: undefined,
+  [Symbol(gaxios-gaxios-error)]: '7.1.1',
+  [cause]: {
+    message: "Quota exceeded for quota metric 'Read requests' and limit 'Read requests per minute per user' of service 'sheets.googleapis.com' for consumer 'project_number:668384902392'.",
+    code: 429,
+    status: 'RESOURCE_EXHAUSTED',
+    errors: [ [Object] ],
+    details: [ [Object], [Object] ]
+  }
+}
+Error in poll_response action: GaxiosError: Quota exceeded for quota metric 'Read requests' and limit 'Read requests per minute per user' of service 'sheets.googleapis.com' for consumer 'project_number:668384902392'.
+    at Gaxios._request (/opt/render/project/src/node_modules/gaxios/build/cjs/src/gaxios.js:154:23)
+    at process.processTicksAndRejections (node:internal/process/task_queues:105:5)
+    at async JWT.requestAsync (/opt/render/project/src/node_modules/google-auth-library/build/src/auth/oauth2client.js:463:20)
+    at async createAPIRequestAsync (/opt/render/project/src/node_modules/googleapis-common/build/src/apirequest.js:308:25)
+    at async getQuestionTextByIndex (/opt/render/project/src/sheets.js:128:17)
+    at async /opt/render/project/src/app.js:356:26
+    at async Array.<anonymous> (/opt/render/project/src/node_modules/@slack/bolt/dist/middleware/builtin.js:175:9)
+    at async Array.onlyActions (/opt/render/project/src/node_modules/@slack/bolt/dist/middleware/builtin.js:34:9)
+    at async Promise.allSettled (index 6)
+    at async /opt/render/project/src/node_modules/@slack/bolt/dist/App.js:678:48 {
+  config: {
+    url: URL {
+      href: 'https://sheets.googleapis.com/v4/spreadsheets/1fP-yFjBdBDqXVAp8AVHI9rdo-dnwJA-mXRmApkUa6rE/values/Survey-1%218%3A8',
+      origin: 'https://sheets.googleapis.com',
+      protocol: 'https:',
+      username: '',
+      password: '',
+      host: 'sheets.googleapis.com',
+      hostname: 'sheets.googleapis.com',
+      port: '',
+      pathname: '/v4/spreadsheets/1fP-yFjBdBDqXVAp8AVHI9rdo-dnwJA-mXRmApkUa6rE/values/Survey-1%218%3A8',
+      search: '',
+      searchParams: URLSearchParams {},
+      hash: ''
+    },
+    method: 'GET',
+    apiVersion: '',
+    userAgentDirectives: [ [Object] ],
+    headers: Headers {
+      'accept-encoding': 'gzip',
+      authorization: '<<REDACTED> - See `errorRedactor` option in `gaxios` for configuration>.',
+      'user-agent': 'google-api-nodejs-client/8.0.0 (gzip)',
+      'x-goog-api-client': 'gdcl/8.0.0 gl-node/22.16.0'
+    },
+    validateStatus: [Function (anonymous)],
+    retry: true,
+    responseType: 'unknown',
+    errorRedactor: [Function: defaultErrorRedactor],
+    retryConfig: {
+      currentRetryAttempt: 3,
+      retry: 3,
+      httpMethodsToRetry: [Array],
+      noResponseRetries: 2,
+      retryDelayMultiplier: 2,
+      timeOfFirstRequest: 1754301421231,
+      totalTimeout: 9007199254740991,
+      maxRetryDelay: 9007199254740991,
+      statusCodesToRetry: [Array]
+    }
+  },
+  response: Response {
+    size: 0,
+    data: { error: [Object] },
+    config: {
+      url: URL {},
+      method: 'GET',
+      apiVersion: '',
+      userAgentDirectives: [Array],
+      headers: Headers {
+        'accept-encoding': 'gzip',
+        authorization: '<<REDACTED> - See `errorRedactor` option in `gaxios` for configuration>.',
+        'user-agent': 'google-api-nodejs-client/8.0.0 (gzip)',
+        'x-goog-api-client': 'gdcl/8.0.0 gl-node/22.16.0'
+      },
+      validateStatus: [Function (anonymous)],
+      retry: true,
+      responseType: 'unknown',
+      errorRedactor: [Function: defaultErrorRedactor],
+      retryConfig: [Object]
+    },
+    [Symbol(Body internals)]: {
+      body: [Gunzip],
+      stream: [Gunzip],
+      boundary: null,
+      disturbed: true,
+      error: null
+    },
+    [Symbol(Response internals)]: {
+      type: 'default',
+      url: 'https://sheets.googleapis.com/v4/spreadsheets/1fP-yFjBdBDqXVAp8AVHI9rdo-dnwJA-mXRmApkUa6rE/values/Survey-1%218%3A8',
+      status: 429,
+      statusText: 'Too Many Requests',
+      headers: [Object],
+      counter: 0,
+      highWaterMark: 16384
+    }
+  },
+  code: 429,
+  status: 429,
+  error: undefined,
+  [Symbol(gaxios-gaxios-error)]: '7.1.1',
+  [cause]: {
+    message: "Quota exceeded for quota metric 'Read requests' and limit 'Read requests per minute per user' of service 'sheets.googleapis.com' for consumer 'project_number:668384902392'.",
+    code: 429,
+    status: 'RESOURCE_EXHAUSTED',
+    errors: [ [Object] ],
+    details: [ [Object], [Object] ]
+  }
+}
+Error in poll_response action: GaxiosError: Quota exceeded for quota metric 'Read requests' and limit 'Read requests per minute per user' of service 'sheets.googleapis.com' for consumer 'project_number:668384902392'.
+    at Gaxios._request (/opt/render/project/src/node_modules/gaxios/build/cjs/src/gaxios.js:154:23)
+    at process.processTicksAndRejections (node:internal/process/task_queues:105:5)
+    at async JWT.requestAsync (/opt/render/project/src/node_modules/google-auth-library/build/src/auth/oauth2client.js:463:20)
+    at async createAPIRequestAsync (/opt/render/project/src/node_modules/googleapis-common/build/src/apirequest.js:308:25)
+    at async getQuestionTextByIndex (/opt/render/project/src/sheets.js:128:17)
+    at async /opt/render/project/src/app.js:356:26
+    at async Array.<anonymous> (/opt/render/project/src/node_modules/@slack/bolt/dist/middleware/builtin.js:175:9)
+    at async Array.onlyActions (/opt/render/project/src/node_modules/@slack/bolt/dist/middleware/builtin.js:34:9)
+    at async Promise.allSettled (index 6)
+    at async /opt/render/project/src/node_modules/@slack/bolt/dist/App.js:678:48 {
+  config: {
+    url: URL {
+      href: 'https://sheets.googleapis.com/v4/spreadsheets/1fP-yFjBdBDqXVAp8AVHI9rdo-dnwJA-mXRmApkUa6rE/values/Survey-1%218%3A8',
+      origin: 'https://sheets.googleapis.com',
+      protocol: 'https:',
+      username: '',
+      password: '',
+      host: 'sheets.googleapis.com',
+      hostname: 'sheets.googleapis.com',
+      port: '',
+      pathname: '/v4/spreadsheets/1fP-yFjBdBDqXVAp8AVHI9rdo-dnwJA-mXRmApkUa6rE/values/Survey-1%218%3A8',
+      search: '',
+      searchParams: URLSearchParams {},
+      hash: ''
+    },
+    method: 'GET',
+    apiVersion: '',
+    userAgentDirectives: [ [Object] ],
+    headers: Headers {
+      'accept-encoding': 'gzip',
+      authorization: '<<REDACTED> - See `errorRedactor` option in `gaxios` for configuration>.',
+      'user-agent': 'google-api-nodejs-client/8.0.0 (gzip)',
+      'x-goog-api-client': 'gdcl/8.0.0 gl-node/22.16.0'
+    },
+    validateStatus: [Function (anonymous)],
+    retry: true,
+    responseType: 'unknown',
+    errorRedactor: [Function: defaultErrorRedactor],
+    retryConfig: {
+      currentRetryAttempt: 3,
+      retry: 3,
+      httpMethodsToRetry: [Array],
+      noResponseRetries: 2,
+      retryDelayMultiplier: 2,
+      timeOfFirstRequest: 1754301422963,
+      totalTimeout: 9007199254740991,
+      maxRetryDelay: 9007199254740991,
+      statusCodesToRetry: [Array]
+    }
+  },
+  response: Response {
+    size: 0,
+    data: { error: [Object] },
+    config: {
+      url: URL {},
+      method: 'GET',
+      apiVersion: '',
+      userAgentDirectives: [Array],
+      headers: Headers {
+        'accept-encoding': 'gzip',
+        authorization: '<<REDACTED> - See `errorRedactor` option in `gaxios` for configuration>.',
+        'user-agent': 'google-api-nodejs-client/8.0.0 (gzip)',
+        'x-goog-api-client': 'gdcl/8.0.0 gl-node/22.16.0'
+      },
+      validateStatus: [Function (anonymous)],
+      retry: true,
+      responseType: 'unknown',
+      errorRedactor: [Function: defaultErrorRedactor],
+      retryConfig: [Object]
+    },
+    [Symbol(Body internals)]: {
+      body: [Gunzip],
+      stream: [Gunzip],
+      boundary: null,
+      disturbed: true,
+      error: null
+    },
+    [Symbol(Response internals)]: {
+      type: 'default',
+      url: 'https://sheets.googleapis.com/v4/spreadsheets/1fP-yFjBdBDqXVAp8AVHI9rdo-dnwJA-mXRmApkUa6rE/values/Survey-1%218%3A8',
+      status: 429,
+      statusText: 'Too Many Requests',
+      headers: [Object],
+      counter: 0,
+      highWaterMark: 16384
+    }
+  },
+  code: 429,
+  status: 429,
+  error: undefined,
+  [Symbol(gaxios-gaxios-error)]: '7.1.1',
+  [cause]: {
+    message: "Quota exceeded for quota metric 'Read requests' and limit 'Read requests per minute per user' of service 'sheets.googleapis.com' for consumer 'project_number:668384902392'.",
+    code: 429,
+    status: 'RESOURCE_EXHAUSTED',
+    errors: [ [Object] ],
+    details: [ [Object], [Object] ]
+  }
+}
+Error in poll_response action: GaxiosError: Quota exceeded for quota metric 'Read requests' and limit 'Read requests per minute per user' of service 'sheets.googleapis.com' for consumer 'project_number:668384902392'.
+    at Gaxios._request (/opt/render/project/src/node_modules/gaxios/build/cjs/src/gaxios.js:154:23)
+    at process.processTicksAndRejections (node:internal/process/task_queues:105:5)
+    at async JWT.requestAsync (/opt/render/project/src/node_modules/google-auth-library/build/src/auth/oauth2client.js:463:20)
+    at async createAPIRequestAsync (/opt/render/project/src/node_modules/googleapis-common/build/src/apirequest.js:308:25)
+    at async getQuestionTextByIndex (/opt/render/project/src/sheets.js:128:17)
+    at async /opt/render/project/src/app.js:356:26
+    at async Array.<anonymous> (/opt/render/project/src/node_modules/@slack/bolt/dist/middleware/builtin.js:175:9)
+    at async Array.onlyActions (/opt/render/project/src/node_modules/@slack/bolt/dist/middleware/builtin.js:34:9)
+    at async Promise.allSettled (index 6)
+    at async /opt/render/project/src/node_modules/@slack/bolt/dist/App.js:678:48 {
+  config: {
+    url: URL {
+      href: 'https://sheets.googleapis.com/v4/spreadsheets/1fP-yFjBdBDqXVAp8AVHI9rdo-dnwJA-mXRmApkUa6rE/values/Survey-1%218%3A8',
+      origin: 'https://sheets.googleapis.com',
+      protocol: 'https:',
+      username: '',
+      password: '',
+      host: 'sheets.googleapis.com',
+      hostname: 'sheets.googleapis.com',
+      port: '',
+      pathname: '/v4/spreadsheets/1fP-yFjBdBDqXVAp8AVHI9rdo-dnwJA-mXRmApkUa6rE/values/Survey-1%218%3A8',
+      search: '',
+      searchParams: URLSearchParams {},
+      hash: ''
+    },
+    method: 'GET',
+    apiVersion: '',
+    userAgentDirectives: [ [Object] ],
+    headers: Headers {
+      'accept-encoding': 'gzip',
+      authorization: '<<REDACTED> - See `errorRedactor` option in `gaxios` for configuration>.',
+      'user-agent': 'google-api-nodejs-client/8.0.0 (gzip)',
+      'x-goog-api-client': 'gdcl/8.0.0 gl-node/22.16.0'
+    },
+    validateStatus: [Function (anonymous)],
+    retry: true,
+    responseType: 'unknown',
+    errorRedactor: [Function: defaultErrorRedactor],
+    retryConfig: {
+      currentRetryAttempt: 3,
+      retry: 3,
+      httpMethodsToRetry: [Array],
+      noResponseRetries: 2,
+      retryDelayMultiplier: 2,
+      timeOfFirstRequest: 1754301425075,
+      totalTimeout: 9007199254740991,
+      maxRetryDelay: 9007199254740991,
+      statusCodesToRetry: [Array]
+    }
+  },
+  response: Response {
+    size: 0,
+    data: { error: [Object] },
+    config: {
+      url: URL {},
+      method: 'GET',
+      apiVersion: '',
+      userAgentDirectives: [Array],
+      headers: Headers {
+        'accept-encoding': 'gzip',
+        authorization: '<<REDACTED> - See `errorRedactor` option in `gaxios` for configuration>.',
+        'user-agent': 'google-api-nodejs-client/8.0.0 (gzip)',
+        'x-goog-api-client': 'gdcl/8.0.0 gl-node/22.16.0'
+      },
+      validateStatus: [Function (anonymous)],
+      retry: true,
+      responseType: 'unknown',
+      errorRedactor: [Function: defaultErrorRedactor],
+      retryConfig: [Object]
+    },
+    [Symbol(Body internals)]: {
+      body: [Gunzip],
+      stream: [Gunzip],
+      boundary: null,
+      disturbed: true,
+      error: null
+    },
+    [Symbol(Response internals)]: {
+      type: 'default',
+      url: 'https://sheets.googleapis.com/v4/spreadsheets/1fP-yFjBdBDqXVAp8AVHI9rdo-dnwJA-mXRmApkUa6rE/values/Survey-1%218%3A8',
+      status: 429,
+      statusText: 'Too Many Requests',
+      headers: [Object],
+      counter: 0,
+      highWaterMark: 16384
+    }
+  },
+  code: 429,
+  status: 429,
+  error: undefined,
+  [Symbol(gaxios-gaxios-error)]: '7.1.1',
+  [cause]: {
+    message: "Quota exceeded for quota metric 'Read requests' and limit 'Read requests per minute per user' of service 'sheets.googleapis.com' for consumer 'project_number:668384902392'.",
+    code: 429,
+    status: 'RESOURCE_EXHAUSTED',
+    errors: [ [Object] ],
+    details: [ [Object], [Object] ]
+  }
+}
+Error in poll_response action: GaxiosError: Quota exceeded for quota metric 'Read requests' and limit 'Read requests per minute per user' of service 'sheets.googleapis.com' for consumer 'project_number:668384902392'.
+    at Gaxios._request (/opt/render/project/src/node_modules/gaxios/build/cjs/src/gaxios.js:154:23)
+    at process.processTicksAndRejections (node:internal/process/task_queues:105:5)
+    at async JWT.requestAsync (/opt/render/project/src/node_modules/google-auth-library/build/src/auth/oauth2client.js:463:20)
+    at async createAPIRequestAsync (/opt/render/project/src/node_modules/googleapis-common/build/src/apirequest.js:308:25)
+    at async getQuestionTextByIndex (/opt/render/project/src/sheets.js:128:17)
+    at async /opt/render/project/src/app.js:356:26
+    at async Array.<anonymous> (/opt/render/project/src/node_modules/@slack/bolt/dist/middleware/builtin.js:175:9)
+    at async Array.onlyActions (/opt/render/project/src/node_modules/@slack/bolt/dist/middleware/builtin.js:34:9)
+    at async Promise.allSettled (index 6)
+    at async /opt/render/project/src/node_modules/@slack/bolt/dist/App.js:678:48 {
+  config: {
+    url: URL {
+      href: 'https://sheets.googleapis.com/v4/spreadsheets/1fP-yFjBdBDqXVAp8AVHI9rdo-dnwJA-mXRmApkUa6rE/values/Survey-1%218%3A8',
+      origin: 'https://sheets.googleapis.com',
+      protocol: 'https:',
+      username: '',
+      password: '',
+      host: 'sheets.googleapis.com',
+      hostname: 'sheets.googleapis.com',
+      port: '',
+      pathname: '/v4/spreadsheets/1fP-yFjBdBDqXVAp8AVHI9rdo-dnwJA-mXRmApkUa6rE/values/Survey-1%218%3A8',
+      search: '',
+      searchParams: URLSearchParams {},
+      hash: ''
+    },
+    method: 'GET',
+    apiVersion: '',
+    userAgentDirectives: [ [Object] ],
+    headers: Headers {
+      'accept-encoding': 'gzip',
+      authorization: '<<REDACTED> - See `errorRedactor` option in `gaxios` for configuration>.',
+      'user-agent': 'google-api-nodejs-client/8.0.0 (gzip)',
+      'x-goog-api-client': 'gdcl/8.0.0 gl-node/22.16.0'
+    },
+    validateStatus: [Function (anonymous)],
+    retry: true,
+    responseType: 'unknown',
+    errorRedactor: [Function: defaultErrorRedactor],
+    retryConfig: {
+      currentRetryAttempt: 3,
+      retry: 3,
+      httpMethodsToRetry: [Array],
+      noResponseRetries: 2,
+      retryDelayMultiplier: 2,
+      timeOfFirstRequest: 1754301425865,
+      totalTimeout: 9007199254740991,
+      maxRetryDelay: 9007199254740991,
+      statusCodesToRetry: [Array]
+    }
+  },
+  response: Response {
+    size: 0,
+    data: { error: [Object] },
+    config: {
+      url: URL {},
+      method: 'GET',
+      apiVersion: '',
+      userAgentDirectives: [Array],
+      headers: Headers {
+        'accept-encoding': 'gzip',
+        authorization: '<<REDACTED> - See `errorRedactor` option in `gaxios` for configuration>.',
+        'user-agent': 'google-api-nodejs-client/8.0.0 (gzip)',
+        'x-goog-api-client': 'gdcl/8.0.0 gl-node/22.16.0'
+      },
+      validateStatus: [Function (anonymous)],
+      retry: true,
+      responseType: 'unknown',
+      errorRedactor: [Function: defaultErrorRedactor],
+      retryConfig: [Object]
+    },
+    [Symbol(Body internals)]: {
+      body: [Gunzip],
+      stream: [Gunzip],
+      boundary: null,
+      disturbed: true,
+      error: null
+    },
+    [Symbol(Response internals)]: {
+      type: 'default',
+      url: 'https://sheets.googleapis.com/v4/spreadsheets/1fP-yFjBdBDqXVAp8AVHI9rdo-dnwJA-mXRmApkUa6rE/values/Survey-1%218%3A8',
+      status: 429,
+      statusText: 'Too Many Requests',
+      headers: [Object],
+      counter: 0,
+      highWaterMark: 16384
+    }
+  },
+  code: 429,
+  status: 429,
+  error: undefined,
+  [Symbol(gaxios-gaxios-error)]: '7.1.1',
+  [cause]: {
+    message: "Quota exceeded for quota metric 'Read requests' and limit 'Read requests per minute per user' of service 'sheets.googleapis.com' for consumer 'project_number:668384902392'.",
+    code: 429,
+    status: 'RESOURCE_EXHAUSTED',
+    errors: [ [Object] ],
+    details: [ [Object], [Object] ]
+  }
+}
+Error in poll_response action: GaxiosError: Quota exceeded for quota metric 'Read requests' and limit 'Read requests per minute per user' of service 'sheets.googleapis.com' for consumer 'project_number:668384902392'.
+    at Gaxios._request (/opt/render/project/src/node_modules/gaxios/build/cjs/src/gaxios.js:154:23)
+    at process.processTicksAndRejections (node:internal/process/task_queues:105:5)
+    at async JWT.requestAsync (/opt/render/project/src/node_modules/google-auth-library/build/src/auth/oauth2client.js:463:20)
+    at async createAPIRequestAsync (/opt/render/project/src/node_modules/googleapis-common/build/src/apirequest.js:308:25)
+    at async getQuestionTextByIndex (/opt/render/project/src/sheets.js:128:17)
+    at async /opt/render/project/src/app.js:356:26
+    at async Array.<anonymous> (/opt/render/project/src/node_modules/@slack/bolt/dist/middleware/builtin.js:175:9)
+    at async Array.onlyActions (/opt/render/project/src/node_modules/@slack/bolt/dist/middleware/builtin.js:34:9)
+    at async Promise.allSettled (index 6)
+    at async /opt/render/project/src/node_modules/@slack/bolt/dist/App.js:678:48 {
+  config: {
+    url: URL {
+      href: 'https://sheets.googleapis.com/v4/spreadsheets/1fP-yFjBdBDqXVAp8AVHI9rdo-dnwJA-mXRmApkUa6rE/values/Survey-1%218%3A8',
+      origin: 'https://sheets.googleapis.com',
+      protocol: 'https:',
+      username: '',
+      password: '',
+      host: 'sheets.googleapis.com',
+      hostname: 'sheets.googleapis.com',
+      port: '',
+      pathname: '/v4/spreadsheets/1fP-yFjBdBDqXVAp8AVHI9rdo-dnwJA-mXRmApkUa6rE/values/Survey-1%218%3A8',
+      search: '',
+      searchParams: URLSearchParams {},
+      hash: ''
+    },
+    method: 'GET',
+    apiVersion: '',
+    userAgentDirectives: [ [Object] ],
+    headers: Headers {
+      'accept-encoding': 'gzip',
+      authorization: '<<REDACTED> - See `errorRedactor` option in `gaxios` for configuration>.',
+      'user-agent': 'google-api-nodejs-client/8.0.0 (gzip)',
+      'x-goog-api-client': 'gdcl/8.0.0 gl-node/22.16.0'
+    },
+    validateStatus: [Function (anonymous)],
+    retry: true,
+    responseType: 'unknown',
+    errorRedactor: [Function: defaultErrorRedactor],
+    retryConfig: {
+      currentRetryAttempt: 3,
+      retry: 3,
+      httpMethodsToRetry: [Array],
+      noResponseRetries: 2,
+      retryDelayMultiplier: 2,
+      timeOfFirstRequest: 1754301466544,
+      totalTimeout: 9007199254740991,
+      maxRetryDelay: 9007199254740991,
+      statusCodesToRetry: [Array]
+    }
+  },
+  response: Response {
+    size: 0,
+    data: { error: [Object] },
+    config: {
+      url: URL {},
+      method: 'GET',
+      apiVersion: '',
+      userAgentDirectives: [Array],
+      headers: Headers {
+        'accept-encoding': 'gzip',
+        authorization: '<<REDACTED> - See `errorRedactor` option in `gaxios` for configuration>.',
+        'user-agent': 'google-api-nodejs-client/8.0.0 (gzip)',
+        'x-goog-api-client': 'gdcl/8.0.0 gl-node/22.16.0'
+      },
+      validateStatus: [Function (anonymous)],
+      retry: true,
+      responseType: 'unknown',
+      errorRedactor: [Function: defaultErrorRedactor],
+      retryConfig: [Object]
+    },
+    [Symbol(Body internals)]: {
+      body: [Gunzip],
+      stream: [Gunzip],
+      boundary: null,
+      disturbed: true,
+      error: null
+    },
+    [Symbol(Response internals)]: {
+      type: 'default',
+      url: 'https://sheets.googleapis.com/v4/spreadsheets/1fP-yFjBdBDqXVAp8AVHI9rdo-dnwJA-mXRmApkUa6rE/values/Survey-1%218%3A8',
+      status: 429,
+      statusText: 'Too Many Requests',
+      headers: [Object],
+      counter: 0,
+      highWaterMark: 16384
+    }
+  },
+  code: 429,
+  status: 429,
+  error: undefined,
+  [Symbol(gaxios-gaxios-error)]: '7.1.1',
+  [cause]: {
+    message: "Quota exceeded for quota metric 'Read requests' and limit 'Read requests per minute per user' of service 'sheets.googleapis.com' for consumer 'project_number:668384902392'.",
+    code: 429,
+    status: 'RESOURCE_EXHAUSTED',
+    errors: [ [Object] ],
+    details: [ [Object], [Object] ]
+  }
+}
+Error in poll_response action: GaxiosError: Quota exceeded for quota metric 'Read requests' and limit 'Read requests per minute per user' of service 'sheets.googleapis.com' for consumer 'project_number:668384902392'.
+    at Gaxios._request (/opt/render/project/src/node_modules/gaxios/build/cjs/src/gaxios.js:154:23)
+    at process.processTicksAndRejections (node:internal/process/task_queues:105:5)
+    at async JWT.requestAsync (/opt/render/project/src/node_modules/google-auth-library/build/src/auth/oauth2client.js:463:20)
+    at async createAPIRequestAsync (/opt/render/project/src/node_modules/googleapis-common/build/src/apirequest.js:308:25)
+    at async getQuestionTextByIndex (/opt/render/project/src/sheets.js:128:17)
+    at async /opt/render/project/src/app.js:356:26
+    at async Array.<anonymous> (/opt/render/project/src/node_modules/@slack/bolt/dist/middleware/builtin.js:175:9)
+    at async Array.onlyActions (/opt/render/project/src/node_modules/@slack/bolt/dist/middleware/builtin.js:34:9)
+    at async Promise.allSettled (index 6)
+    at async /opt/render/project/src/node_modules/@slack/bolt/dist/App.js:678:48 {
+  config: {
+    url: URL {
+      href: 'https://sheets.googleapis.com/v4/spreadsheets/1fP-yFjBdBDqXVAp8AVHI9rdo-dnwJA-mXRmApkUa6rE/values/Survey-1%218%3A8',
+      origin: 'https://sheets.googleapis.com',
+      protocol: 'https:',
+      username: '',
+      password: '',
+      host: 'sheets.googleapis.com',
+      hostname: 'sheets.googleapis.com',
+      port: '',
+      pathname: '/v4/spreadsheets/1fP-yFjBdBDqXVAp8AVHI9rdo-dnwJA-mXRmApkUa6rE/values/Survey-1%218%3A8',
+      search: '',
+      searchParams: URLSearchParams {},
+      hash: ''
+    },
+    method: 'GET',
+    apiVersion: '',
+    userAgentDirectives: [ [Object] ],
+    headers: Headers {
+      'accept-encoding': 'gzip',
+      authorization: '<<REDACTED> - See `errorRedactor` option in `gaxios` for configuration>.',
+      'user-agent': 'google-api-nodejs-client/8.0.0 (gzip)',
+      'x-goog-api-client': 'gdcl/8.0.0 gl-node/22.16.0'
+    },
+    validateStatus: [Function (anonymous)],
+    retry: true,
+    responseType: 'unknown',
+    errorRedactor: [Function: defaultErrorRedactor],
+    retryConfig: {
+      currentRetryAttempt: 3,
+      retry: 3,
+      httpMethodsToRetry: [Array],
+      noResponseRetries: 2,
+      retryDelayMultiplier: 2,
+      timeOfFirstRequest: 1754301486330,
+      totalTimeout: 9007199254740991,
+      maxRetryDelay: 9007199254740991,
+      statusCodesToRetry: [Array]
+    }
+  },
+  response: Response {
+    size: 0,
+    data: { error: [Object] },
+    config: {
+      url: URL {},
+      method: 'GET',
+      apiVersion: '',
+      userAgentDirectives: [Array],
+      headers: Headers {
+        'accept-encoding': 'gzip',
+        authorization: '<<REDACTED> - See `errorRedactor` option in `gaxios` for configuration>.',
+        'user-agent': 'google-api-nodejs-client/8.0.0 (gzip)',
+        'x-goog-api-client': 'gdcl/8.0.0 gl-node/22.16.0'
+      },
+      validateStatus: [Function (anonymous)],
+      retry: true,
+      responseType: 'unknown',
+      errorRedactor: [Function: defaultErrorRedactor],
+      retryConfig: [Object]
+    },
+    [Symbol(Body internals)]: {
+      body: [Gunzip],
+      stream: [Gunzip],
+      boundary: null,
+      disturbed: true,
+      error: null
+    },
+    [Symbol(Response internals)]: {
+      type: 'default',
+      url: 'https://sheets.googleapis.com/v4/spreadsheets/1fP-yFjBdBDqXVAp8AVHI9rdo-dnwJA-mXRmApkUa6rE/values/Survey-1%218%3A8',
+      status: 429,
+      statusText: 'Too Many Requests',
+      headers: [Object],
+      counter: 0,
+      highWaterMark: 16384
+    }
+  },
+  code: 429,
+  status: 429,
+  error: undefined,
+  [Symbol(gaxios-gaxios-error)]: '7.1.1',
+  [cause]: {
+    message: "Quota exceeded for quota metric 'Read requests' and limit 'Read requests per minute per user' of service 'sheets.googleapis.com' for consumer 'project_number:668384902392'.",
+    code: 429,
+    status: 'RESOURCE_EXHAUSTED',
+    errors: [ [Object] ],
+    details: [ [Object], [Object] ]
+  }
+}
+Error in poll_response action: GaxiosError: Quota exceeded for quota metric 'Read requests' and limit 'Read requests per minute per user' of service 'sheets.googleapis.com' for consumer 'project_number:668384902392'.
+    at Gaxios._request (/opt/render/project/src/node_modules/gaxios/build/cjs/src/gaxios.js:154:23)
+    at process.processTicksAndRejections (node:internal/process/task_queues:105:5)
+    at async JWT.requestAsync (/opt/render/project/src/node_modules/google-auth-library/build/src/auth/oauth2client.js:463:20)
+    at async createAPIRequestAsync (/opt/render/project/src/node_modules/googleapis-common/build/src/apirequest.js:308:25)
+    at async getQuestionTextByIndex (/opt/render/project/src/sheets.js:128:17)
+    at async /opt/render/project/src/app.js:356:26
+    at async Array.<anonymous> (/opt/render/project/src/node_modules/@slack/bolt/dist/middleware/builtin.js:175:9)
+    at async Array.onlyActions (/opt/render/project/src/node_modules/@slack/bolt/dist/middleware/builtin.js:34:9)
+    at async Promise.allSettled (index 6)
+    at async /opt/render/project/src/node_modules/@slack/bolt/dist/App.js:678:48 {
+  config: {
+    url: URL {
+      href: 'https://sheets.googleapis.com/v4/spreadsheets/1fP-yFjBdBDqXVAp8AVHI9rdo-dnwJA-mXRmApkUa6rE/values/Survey-1%218%3A8',
+      origin: 'https://sheets.googleapis.com',
+      protocol: 'https:',
+      username: '',
+      password: '',
+      host: 'sheets.googleapis.com',
+      hostname: 'sheets.googleapis.com',
+      port: '',
+      pathname: '/v4/spreadsheets/1fP-yFjBdBDqXVAp8AVHI9rdo-dnwJA-mXRmApkUa6rE/values/Survey-1%218%3A8',
+      search: '',
+      searchParams: URLSearchParams {},
+      hash: ''
+    },
+    method: 'GET',
+    apiVersion: '',
+    userAgentDirectives: [ [Object] ],
+    headers: Headers {
+      'accept-encoding': 'gzip',
+      authorization: '<<REDACTED> - See `errorRedactor` option in `gaxios` for configuration>.',
+      'user-agent': 'google-api-nodejs-client/8.0.0 (gzip)',
+      'x-goog-api-client': 'gdcl/8.0.0 gl-node/22.16.0'
+    },
+    validateStatus: [Function (anonymous)],
+    retry: true,
+    responseType: 'unknown',
+    errorRedactor: [Function: defaultErrorRedactor],
+    retryConfig: {
+      currentRetryAttempt: 3,
+      retry: 3,
+      httpMethodsToRetry: [Array],
+      noResponseRetries: 2,
+      retryDelayMultiplier: 2,
+      timeOfFirstRequest: 1754301489344,
+      totalTimeout: 9007199254740991,
+      maxRetryDelay: 9007199254740991,
+      statusCodesToRetry: [Array]
+    }
+  },
+  response: Response {
+    size: 0,
+    data: { error: [Object] },
+    config: {
+      url: URL {},
+      method: 'GET',
+      apiVersion: '',
+      userAgentDirectives: [Array],
+      headers: Headers {
+        'accept-encoding': 'gzip',
+        authorization: '<<REDACTED> - See `errorRedactor` option in `gaxios` for configuration>.',
+        'user-agent': 'google-api-nodejs-client/8.0.0 (gzip)',
+        'x-goog-api-client': 'gdcl/8.0.0 gl-node/22.16.0'
+      },
+      validateStatus: [Function (anonymous)],
+      retry: true,
+      responseType: 'unknown',
+      errorRedactor: [Function: defaultErrorRedactor],
+      retryConfig: [Object]
+    },
+    [Symbol(Body internals)]: {
+      body: [Gunzip],
+      stream: [Gunzip],
+      boundary: null,
+      disturbed: true,
+      error: null
+    },
+    [Symbol(Response internals)]: {
+      type: 'default',
+      url: 'https://sheets.googleapis.com/v4/spreadsheets/1fP-yFjBdBDqXVAp8AVHI9rdo-dnwJA-mXRmApkUa6rE/values/Survey-1%218%3A8',
+      status: 429,
+      statusText: 'Too Many Requests',
+      headers: [Object],
+      counter: 0,
+      highWaterMark: 16384
+    }
+  },
+  code: 429,
+  status: 429,
+  error: undefined,
+  [Symbol(gaxios-gaxios-error)]: '7.1.1',
+  [cause]: {
+    message: "Quota exceeded for quota metric 'Read requests' and limit 'Read requests per minute per user' of service 'sheets.googleapis.com' for consumer 'project_number:668384902392'.",
+    code: 429,
+    status: 'RESOURCE_EXHAUSTED',
+    errors: [ [Object] ],
+    details: [ [Object], [Object] ]
+  }
+}
         
         await client.views.open({
             trigger_id: body.trigger_id,
@@ -403,6 +3561,7 @@ app.action(/^poll_response_.+$/, async ({ ack, body, client, action }) => {
         });
     } catch (e) { console.error("Error in poll_response action:", e); }
 });
+
 app.action('multiple_choice_modal_button', async ({ ack, body, client, action }) => {
     await ack();
     try {
@@ -544,13 +3703,18 @@ if (!parsedData.surveyTitle.trim()) {
 app.view('confirm_answer_submission', async ({ ack, body, view, client }) => {
     await ack();
     const user = body.user.id;
-    const { channelId, messageTs, sheetName, label, qIndex } = JSON.parse(view.private_metadata);
+    // Get the question from the metadata, no API call needed.
+    const { channelId, messageTs, sheetName, label, qIndex, question } = JSON.parse(view.private_metadata);
+    
     try {
         const history = await client.conversations.history({ channel: channelId, latest: messageTs, limit: 1, inclusive: true });
         const originalBlocks = history.messages[0].blocks;
         const userInfo = await client.users.info({ user });
         const userName = userInfo.user.profile.real_name || userInfo.user.name;
-        const question = await getQuestionTextByIndex(sheetName, qIndex);
+
+        // The following line is no longer needed and should be removed:
+        // const question = await getQuestionTextByIndex(sheetName, qIndex);
+
         if (await checkIfAnswered({ sheetName, user: userName, question })) {
             await client.chat.postEphemeral({ user, channel: channelId, text: "⏩ You've already answered this question." });
             return;
@@ -742,18 +3906,21 @@ app.view('user_group_submission', async ({ ack, body, view, client }) => {
 app.view('other_option_submission', async ({ ack, body, view, client }) => {
     await ack();
     const user = body.user.id;
-    const { channelId, messageTs, qIndex, sheetName } = JSON.parse(view.private_metadata);
+    // Get the question from the metadata, no API call needed.
+    const { channelId, messageTs, qIndex, sheetName, question } = JSON.parse(view.private_metadata);
 
     try {
         const history = await client.conversations.history({ channel: channelId, latest: messageTs, limit: 1, inclusive: true });
         const originalBlocks = history.messages[0].blocks;
         
         const answerText = view.state.values.other_input_block.other_input.value;
-        const finalAnswer = `Other: ${answerText}`; // Prefix the answer for clarity in results
+        const finalAnswer = `Other: ${answerText}`;
 
         const userInfo = await client.users.info({ user: user });
         const userName = userInfo.user.profile.real_name || userInfo.user.name;
-        const question = await getQuestionTextByIndex(sheetName, qIndex);
+        
+        // The following line is no longer needed and should be removed:
+        // const question = await getQuestionTextByIndex(sheetName, qIndex);
         
         if (await checkIfAnswered({ sheetName, user: userName, question })) {
             await client.chat.postEphemeral({ channel: channelId, user: user, text: "⏩ You've already answered this question." });
