@@ -183,6 +183,74 @@ app.command('/survey-results', async ({ ack, body, client }) => {
     }
 });
 
+app.command('/groups', async ({ ack, body, client }) => {
+    await ack();
+    try {
+        const userGroups = await getAllUserGroups();
+        let blocks = [
+            {
+                type: 'header',
+                text: { type: 'plain_text', text: '👥 Manage User Groups' }
+            },
+            {
+                type: 'section',
+                text: { type: 'mrkdwn', text: 'Create a new group to easily send surveys to the same set of people.' }
+            },
+            { type: 'divider' },
+            {
+                type: 'input',
+                block_id: 'group_name_block',
+                label: { type: 'plain_text', text: 'New Group Name' },
+                element: {
+                    type: 'plain_text_input',
+                    action_id: 'group_name_input',
+                    placeholder: { type: 'plain_text', text: 'e.g., Engineering Team' }
+                }
+            },
+            {
+                type: 'input',
+                block_id: 'group_members_block',
+                label: { type: 'plain_text', text: 'Group Members' },
+                element: {
+                    type: 'multi_users_select',
+                    action_id: 'group_members_select',
+                    placeholder: { type: 'plain_text', text: 'Select users' }
+                }
+            }
+        ];
+
+        if (userGroups.length > 0) {
+            blocks.push({ type: 'divider' });
+            blocks.push({ type: 'context', elements: [{ type: 'mrkdwn', text: '*Existing Groups*' }] });
+            userGroups.forEach(group => {
+                blocks.push({
+                    type: 'section',
+                    text: { type: 'mrkdwn', text: `*${group.GroupName}*` }
+                });
+            });
+        }
+
+        await client.views.open({
+            trigger_id: body.trigger_id,
+            view: {
+                type: 'modal',
+                callback_id: 'user_group_submission',
+                title: { type: 'plain_text', text: 'Manage Groups' },
+                submit: { type: 'plain_text', text: 'Save Group' },
+                close: { type: 'plain_text', text: 'Cancel' },
+                blocks: blocks
+            }
+        });
+    } catch (error) {
+        console.error("Error in /groups command:", error);
+        await client.chat.postEphemeral({
+            user: body.user_id,
+            channel: body.user_id,
+            text: "Sorry, an error occurred while opening the groups manager."
+        });
+    }
+});
+
 // --- Action Handlers ---
 app.action(/^(add|delete)_question_button$|^load_survey_template$/, async ({ ack, body, client, action }) => {
     await ack();
@@ -474,6 +542,45 @@ app.view('view_survey_results', async ({ ack, body, view, client }) => {
         await client.chat.postMessage({
             channel: user,
             text: `❌ Sorry, an error occurred while fetching the results for *${selectedSheet}*.`
+        });
+    }
+});
+
+app.view('user_group_submission', async ({ ack, body, view, client }) => {
+    const groupName = view.state.values.group_name_block.group_name_input.value;
+    const memberIds = view.state.values.group_members_block.group_members_select.selected_users;
+    const creatorId = body.user.id;
+
+    if (!groupName || !memberIds || memberIds.length === 0) {
+        await ack({
+            response_action: 'errors',
+            errors: {
+                group_name_block: !groupName ? 'Group name cannot be empty.' : null,
+                group_members_block: !memberIds || memberIds.length === 0 ? 'You must select at least one member.' : null
+            }
+        });
+        return;
+    }
+    
+    await ack();
+
+    try {
+        await saveUserGroup({
+            groupName,
+            creatorId,
+            memberIds: memberIds.join(','),
+        });
+        await client.chat.postEphemeral({
+            user: creatorId,
+            channel: creatorId, 
+            text: `✅ User group *${groupName}* was saved successfully!`
+        });
+    } catch (error) {
+        console.error("Error saving user group:", error);
+        await client.chat.postEphemeral({
+            user: creatorId,
+            channel: creatorId,
+            text: `❌ There was an error saving the group. Please check the logs.`
         });
     }
 });
