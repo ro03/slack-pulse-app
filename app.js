@@ -115,6 +115,37 @@ const parseModalState = (values) => {
     return { introMessage: values.intro_message_block?.intro_message_input?.value || '', questions: questions, };
 };
 
+// --- Helper: Find and replace @username with <@USER_ID> ---
+const replaceUserMentions = (text, allUsers) => {
+    // If text is empty or there's no '@', no need to process
+    if (!text || !text.includes('@')) {
+        return text;
+    }
+
+    let newText = text;
+    // This regex finds all occurrences of @username
+    const mentionRegex = /@([a-zA-Z0-9._-]+)/g;
+    const mentions = text.match(mentionRegex);
+
+    if (!mentions) {
+        return text; // No valid mentions found
+    }
+
+    for (const mention of mentions) {
+        // Get the username without the '@' prefix
+        const username = mention.substring(1);
+
+        // Find the user object by their handle (u.name) or their display name
+        const user = allUsers.find(u => u.name === username || (u.profile && u.profile.display_name === username));
+
+        if (user && user.id) {
+            // If a user is found, replace the @username text with the <@USER_ID> format
+            newText = newText.replace(mention, `<@${user.id}>`);
+        }
+    }
+    return newText;
+};
+
 // --- Command Handlers ---
 app.command('/ask', async ({ ack, body, client }) => {
     await ack();
@@ -371,10 +402,11 @@ app.view('poll_submission', async ({ ack, body, view, client }) => {
     await ack();
     const user = body.user.id;
     try {
-        const user = body.user.id; // This is the creator's ID
-        const values = view.state.values;
-        const creatorInfo = await client.users.info({ user: user });
+        const creatorInfo = await client.users.info({ user });
         const creatorName = creatorInfo.user.profile.real_name || creatorInfo.user.name;
+        const values = view.state.values;
+
+        // ... (The existing code for getting destinations and parsing data remains the same)
         let finalConversationIds = new Set();
         (values.destinations_block.destinations_select.selected_conversations || []).forEach(id => finalConversationIds.add(id));
         const selectedGroupName = values.group_destination_block?.group_destination_select?.selected_option?.value;
@@ -386,11 +418,15 @@ app.view('poll_submission', async ({ ack, body, view, client }) => {
         if (parsedQuestions.length === 0) { await client.chat.postEphemeral({ user: user, channel: user, text: "⚠️ Survey not sent. You must add at least one question." }); return; }
         const templateNameToSave = values.template_save_block?.template_save_name_input?.value;
         if (templateNameToSave) { await saveSurveyTemplate({ templateName: templateNameToSave, creatorId: user, surveyData: JSON.stringify(parsedData) }); }
+
+        // ... (The existing code for creating the sheet and survey details remains the same)
         const questionTexts = parsedQuestions.map(q => q.questionText);
         const sheetName = `Survey - ${questionTexts[0].substring(0, 40).replace(/[/\\?%*:|'"<>]/g, '')} - ${Date.now()}`;
         const surveyDetails = { reminderMessage: values.reminder_message_block?.reminder_message_input?.value || '', reminderHours: parseInt(values.reminder_schedule_block?.reminder_schedule_select?.selected_option?.value || '0', 10), };
         const surveyDefJson = JSON.stringify(parsedData);
         await createNewSheetWithDetails(sheetName, creatorName, user, questionTexts, surveyDetails, surveyDefJson);
+
+        // Build the initial set of blocks
         let allBlocks = [];
         if (parsedData.introMessage) {
             allBlocks.push({ type: 'section', text: { type: 'mrkdwn', text: parsedData.introMessage } });
@@ -401,22 +437,46 @@ app.view('poll_submission', async ({ ack, body, view, client }) => {
             allBlocks.push({ type: 'section', text: { type: 'mrkdwn', text: `*${questionNumber}. ${qData.questionText}*` } });
             allBlocks.push(buildQuestionActions(qData, sheetName, index));
         });
+
+        // --- MODIFICATION START ---
+
+        // 1. Fetch all users from the workspace ONCE before the loop
+        const usersListResponse = await client.users.list();
+        const allWorkspaceUsers = usersListResponse.users || [];
+
         const recipientsWithTs = [];
         for (const conversationId of conversationIds) {
             try {
+                // Create a fresh copy of blocks for each recipient
                 let personalizedBlocks = JSON.parse(JSON.stringify(allBlocks));
-                if (conversationId.startsWith('U') && parsedData.introMessage) {
-                    const userInfo = await client.users.info({ user: conversationId });
-                    const firstName = userInfo.user.profile.first_name || userInfo.user.profile.real_name.split(' ')[0];
-                    const introBlock = personalizedBlocks.find(b => b.type === 'section' && b.text.text === parsedData.introMessage);
-                    if (introBlock) {
-                        introBlock.text.text = introBlock.text.text.replace(/\[firstName\]/g, firstName);
+                
+                // Find the intro message block to modify it
+                if (parsedData.introMessage) {
+                    const introBlock = personalizedBlocks.find(b => b.type === 'section');
+                    if(introBlock) {
+                        let messageText = introBlock.text.text;
+
+                        // 2. Personalize [firstName] for DMs
+                        if (conversationId.startsWith('U')) {
+                            const userInfo = await client.users.info({ user: conversationId });
+                            const firstName = userInfo.user.profile.first_name || userInfo.user.profile.real_name.split(' ')[0];
+                            messageText = messageText.replace(/\[firstName\]/g, firstName);
+                        }
+
+                        // 3. Replace all @-mentions using our new helper
+                        messageText = replaceUserMentions(messageText, allWorkspaceUsers);
+                        
+                        // Update the block with the fully processed text
+                        introBlock.text.text = messageText;
                     }
                 }
+                
                 const result = await client.chat.postMessage({ channel: conversationId, text: `You have a new survey from ${creatorName}`, blocks: personalizedBlocks });
                 if (result.ts) { recipientsWithTs.push({ id: conversationId, ts: result.ts }); }
             } catch (error) { console.error(`Failed to send to ${conversationId}:`, error.data || error); }
         }
+        // --- MODIFICATION END ---
+        
         if (recipientsWithTs.length > 0) { await saveRecipients(sheetName, recipientsWithTs); }
     } catch (error) {
         console.error("Error in poll_submission view handler:", error);
