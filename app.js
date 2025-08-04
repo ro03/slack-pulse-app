@@ -254,13 +254,48 @@ app.command('/groups', async ({ ack, body, client }) => {
 // --- Action Handlers ---
 app.action(/^(add|delete)_question_button$|^load_survey_template$/, async ({ ack, body, client, action }) => {
     await ack();
+
+    // Current state is parsed from the modal's inputs
     let viewData = parseModalState(body.view.state.values);
-    if (action.action_id === 'add_question_button') { viewData.questions.push({}); } else if (action.action_id === 'delete_question_button') { const questionIndexToDelete = parseInt(action.value, 10) - 1; viewData.questions.splice(questionIndexToDelete, 1); } else if (action.action_id === 'load_survey_template') { const template = await getTemplateByName(action.selected_option.value); if (template) { viewData = JSON.parse(template.SurveyData); } }
-    const [userGroups, templates] = await Promise.all([ getAllUserGroups(), getAllSurveyTemplates() ]);
+
+    if (action.action_id === 'add_question_button') {
+        viewData.questions.push({});
+    } else if (action.action_id === 'delete_question_button') {
+        const questionIndexToDelete = parseInt(action.value, 10) - 1;
+        viewData.questions.splice(questionIndexToDelete, 1);
+    } else if (action.action_id === 'load_survey_template') {
+        const template = await getTemplateByName(action.selected_option.value);
+        if (template && template.SurveyData) {
+            // --- THE FIX IS HERE ---
+            // Instead of replacing viewData, we merge the data from the template.
+            // This is more robust and preserves other properties.
+            const templateData = JSON.parse(template.SurveyData);
+            viewData.introMessage = templateData.introMessage || '';
+            viewData.questions = templateData.questions || [];
+        }
+    }
+
+    // Now, re-fetch dynamic data (groups and templates) and add it to our viewData
+    const [userGroups, templates] = await Promise.all([getAllUserGroups(), getAllSurveyTemplates()]);
     viewData.userGroups = userGroups;
     viewData.templates = templates;
-    try { await client.views.update({ view_id: body.view.id, hash: body.view.hash, view: { type: 'modal', callback_id: 'poll_submission', title: { type: 'plain_text', text: 'Create New Survey' }, submit: { type: 'plain_text', text: 'Send Survey' }, blocks: generateModalBlocks(viewData) }, });
-    } catch(e) { console.error("View update failed:", e.data || e); }
+
+    // Finally, update the view with the complete and correct data
+    try {
+        await client.views.update({
+            view_id: body.view.id,
+            hash: body.view.hash,
+            view: {
+                type: 'modal',
+                callback_id: 'poll_submission',
+                title: { type: 'plain_text', text: 'Create New Survey' },
+                submit: { type: 'plain_text', text: 'Send Survey' },
+                blocks: generateModalBlocks(viewData)
+            },
+        });
+    } catch (e) {
+        console.error("View update failed:", e.data || e);
+    }
 });
 app.action('delete_template_button', async ({ ack, action }) => {
     await ack();
