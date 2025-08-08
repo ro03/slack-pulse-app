@@ -539,7 +539,7 @@ if (!parsedData.surveyTitle.trim()) {
                     }
                 }
 
-                const result = await client.chat.postMessage({ channel: conversationId, text: `You have a new survey from ${creatorName}`, blocks: personalizedBlocks });
+                const result = await client.chat.postMessage({ channel: conversationId, text: `You have a new message`, blocks: personalizedBlocks });
                 if (result.ts) { recipientsWithTs.push({ id: conversationId, ts: result.ts }); }
             } catch (error) { console.error(`Failed to send to ${conversationId}:`, error.data || error); }
         }
