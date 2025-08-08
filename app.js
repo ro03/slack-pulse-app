@@ -471,8 +471,18 @@ if (!parsedData.surveyTitle.trim()) {
             return;
         }
 
+          // Filter out any empty questions the user might have added
         const parsedQuestions = parsedData.questions.filter(q => q.questionText && q.questionText.trim() !== '');
-        if (parsedQuestions.length === 0) { await client.chat.postEphemeral({ user: user, channel: user, text: "⚠️ Survey not sent. You must add at least one question." }); return; }
+
+        // NEW VALIDATION: Check for intro message OR at least one question
+        if (!parsedData.introMessage.trim() && parsedQuestions.length === 0) {
+            await client.chat.postEphemeral({ 
+                user: user, 
+                channel: user, 
+                text: "⚠️ Survey not sent. You must provide an introductory message or add at least one question." 
+            });
+            return;
+        }
         const templateNameToSave = values.template_save_block?.template_save_name_input?.value;
         if (templateNameToSave) { await saveSurveyTemplate({ templateName: templateNameToSave, creatorId: user, surveyData: JSON.stringify(parsedData) }); }
 
